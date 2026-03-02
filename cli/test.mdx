@@ -1,0 +1,170 @@
+---
+title: test
+description: Run a parser's tests
+---
+
+The `test` command runs the test suite for a parser. It validates corpus tests, query validity, syntax highlighting tests, and tag tests.
+
+```bash
+tree-sitter test [OPTIONS]
+```
+
+**Aliases:** `t`
+
+## Test Types
+
+The command runs several types of tests:
+
+### Corpus Tests
+
+Located in `test/corpus/`, these tests verify that the parser produces the expected syntax trees for various inputs.
+
+### Query Tests
+
+Validates that all queries in the `queries/` directory are syntactically correct and work with the parser.
+
+### Highlight Tests
+
+Located in `test/highlight/`, these tests verify syntax highlighting produces expected results.
+
+### Tag Tests
+
+Located in `test/tags/`, these tests verify symbol tagging produces expected tags.
+
+## Options
+
+### Test Selection
+
+<ParamField path="-i, --include" type="regex">
+  Only run tests whose names match this regex.
+</ParamField>
+
+<ParamField path="-e, --exclude" type="regex">
+  Skip tests whose names match this regex.
+</ParamField>
+
+<ParamField path="--file-name" type="name">
+  Only run tests from the given filename in the corpus.
+</ParamField>
+
+### Parser Options
+
+<ParamField path="-p, --grammar-path" type="path">
+  The path to the directory containing the grammar. Implies `--rebuild`.
+</ParamField>
+
+<ParamField path="--lib-path" type="path">
+  The path to the parser's dynamic library. Used instead of the cached or automatically generated library.
+</ParamField>
+
+<ParamField path="--lang-name" type="string">
+  If `--lib-path` is used, the name of the language used to extract the library's language function.
+</ParamField>
+
+### Test Management
+
+<ParamField path="-u, --update" type="flag">
+  Update the expected output of tests.
+  
+  <Warning>
+    Tests containing `ERROR` nodes or `MISSING` nodes will not be updated.
+  </Warning>
+</ParamField>
+
+### Output Options
+
+<ParamField path="--overview-only" type="flag">
+  Only show the overview of test results, not the diff.
+</ParamField>
+
+<ParamField path="--show-fields" type="flag">
+  Force showing fields in test diffs.
+</ParamField>
+
+<ParamField path="--stat" type="level">
+  Show parsing statistics when tests are being run. One of:
+  
+  - `all` - Show statistics for every test
+  - `outliers-and-total` - Show statistics only for outliers and total
+  - `total-only` - Show only total statistics
+</ParamField>
+
+<ParamField path="--json-summary" type="flag">
+  Output the test summary in a JSON format.
+</ParamField>
+
+### Debug Options
+
+<ParamField path="-d, --debug" type="flag">
+  Output parsing and lexing logs to stderr.
+</ParamField>
+
+<ParamField path="-D, --debug-graph" type="flag">
+  Output logs of the graphs of the stack and parse trees. Graphs are constructed with [graphviz dot](https://graphviz.org/doc/info/lang.html), and output is written to `log.html`.
+</ParamField>
+
+<ParamField path="--open-log" type="flag">
+  When using `--debug-graph`, open the log file in the default browser.
+</ParamField>
+
+<ParamField path="-0, --debug-build" type="flag">
+  Compile the parser with debug flags enabled. Useful when debugging with `gdb` or `lldb`.
+</ParamField>
+
+### Build Options
+
+<ParamField path="--wasm" type="flag">
+  Compile and run the parser as a Wasm module (only if the CLI was built with `--features=wasm`).
+</ParamField>
+
+<ParamField path="-r, --rebuild" type="flag">
+  Force a rebuild of the parser before running tests.
+</ParamField>
+
+<ParamField path="--config-path" type="path">
+  The path to an alternative configuration (`config.json`) file. See [init-config](/cli/init-config).
+</ParamField>
+
+## Examples
+
+### Run All Tests
+
+```bash
+tree-sitter test
+```
+
+### Run Tests Matching a Pattern
+
+```bash
+tree-sitter test --include "function"
+```
+
+### Update Test Expectations
+
+```bash
+tree-sitter test --update
+```
+
+### Run Tests with Statistics
+
+```bash
+tree-sitter test --stat all
+```
+
+### Debug a Failing Test
+
+```bash
+tree-sitter test --include "my_test" --debug-graph --open-log
+```
+
+### Run Tests from Specific File
+
+```bash
+tree-sitter test --file-name statements.txt
+```
+
+### Show Only Overview
+
+```bash
+tree-sitter test --overview-only
+```

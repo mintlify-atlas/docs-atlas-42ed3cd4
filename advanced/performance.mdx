@@ -1,0 +1,614 @@
+---
+title: Performance Optimization
+description: Best practices and techniques for maximizing Tree-sitter performance in production applications.
+---
+
+Tree-sitter is designed for high performance, but achieving optimal speed requires understanding its performance characteristics and following best practices.
+
+## Core Performance Principles
+
+<CardGroup cols={3}>
+  <Card title="Incremental" icon="arrows-rotate">
+    Reuse unchanged subtrees during reparsing
+  </Card>
+  <Card title="Lazy" icon="clock">
+    Create nodes only when accessed
+  </Card>
+  <Card title="Zero-copy" icon="copy">
+    Reference source text instead of copying
+  </Card>
+</CardGroup>
+
+## Parsing Performance
+
+### Reuse Parser Instances
+
+**Don't:**
+```rust
+// Creates new parser for every file
+for file in files {
+    let mut parser = Parser::new();  // Expensive!
+    parser.set_language(&language)?;
+    let tree = parser.parse(&file, None)?;
+}
+```
+
+**Do:**
+```rust
+// Reuse parser across files
+let mut parser = Parser::new();
+parser.set_language(&language)?;
+
+for file in files {
+    let tree = parser.parse(&file, None)?;  // Fast!
+}
+```
+
+<Info>
+Creating a parser allocates internal buffers. Reusing parsers amortizes this cost.
+</Info>
+
+### Leverage Incremental Parsing
+
+Incremental parsing is Tree-sitter's superpower:
+
+```rust
+// Initial parse
+let mut tree = parser.parse(&old_source, None)?;
+
+// User makes an edit
+let edit = InputEdit {
+    start_byte: 10,
+    old_end_byte: 15,
+    new_end_byte: 20,
+    start_position: Point::new(0, 10),
+    old_end_position: Point::new(0, 15),
+    new_end_position: Point::new(0, 20),
+};
+
+tree.edit(&edit);
+
+// Reparse with old tree - only changed regions are reparsed!
+let new_tree = parser.parse(&new_source, Some(&tree))?;
+```
+
+**Performance impact:**
+- Full parse: ~1-2ms for 1000 lines
+- Incremental parse: ~0.1-0.2ms for small edits
+
+**Speedup: 10-20x for typical edits**
+
+### Set Parsing Limits
+
+Prevent runaway parsing on pathological input:
+
+```rust
+// Set timeout in microseconds
+parser.set_timeout_micros(1_000_000); // 1 second
+
+// Limit parsing to specific byte ranges
+parser.set_included_ranges(&[
+    Range {
+        start_byte: 0,
+        end_byte: 10000,
+        start_point: Point::new(0, 0),
+        end_point: Point::new(500, 0),
+    },
+])?;
+```
+
+### Use Cancellation Flags
+
+For responsive UIs, allow cancellation:
+
+```rust
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+let cancellation_flag = AtomicUsize::new(0);
+parser.set_cancellation_flag(Some(&cancellation_flag));
+
+// Start parsing on background thread
+let handle = thread::spawn(move || {
+    parser.parse(&source, None)
+});
+
+// User cancels operation
+cancellation_flag.store(1, Ordering::Relaxed);
+```
+
+## Query Performance
+
+### Reuse Query Objects
+
+**Don't:**
+```rust
+for tree in trees {
+    // Compiles query every iteration!
+    let query = Query::new(&language, query_source)?;
+    let matches = cursor.matches(&query, tree.root_node(), source);
+}
+```
+
+**Do:**
+```rust
+// Compile once
+let query = Query::new(&language, query_source)?;
+
+for tree in trees {
+    // Reuse compiled query
+    let matches = cursor.matches(&query, tree.root_node(), source);
+}
+```
+
+### Reuse Query Cursors
+
+Query cursors maintain internal state:
+
+```rust
+let query = Query::new(&language, query_source)?;
+let mut cursor = QueryCursor::new();
+
+for tree in trees {
+    // Cursor is automatically reset for each query
+    let matches = cursor.matches(&query, tree.root_node(), source);
+}
+```
+
+<Tip>
+One cursor per thread is optimal. Cursors are NOT thread-safe.
+</Tip>
+
+### Set Query Ranges
+
+Limit query execution to relevant regions:
+
+```rust
+// Only query visible range
+cursor.set_byte_range(visible_start..visible_end);
+cursor.set_point_range(
+    Point::new(visible_start_row, 0)..
+    Point::new(visible_end_row, usize::MAX)
+);
+
+let matches = cursor.matches(&query, node, source);
+```
+
+**Impact:** 5-10x speedup for large files when querying small regions.
+
+### Optimize Query Patterns
+
+**Specific patterns are faster:**
+
+```scheme
+; Slow - matches every identifier
+(identifier) @var
+
+; Fast - matches only specific context
+(variable_declaration
+  (identifier) @var)
+```
+
+**Order patterns by specificity:**
+
+```scheme
+; Check specific patterns first
+(function_declaration name: (identifier) @function)
+(class_declaration name: (identifier) @class)
+
+; Generic patterns last
+(identifier) @variable
+```
+
+### Use Pattern Indices
+
+Filter matches by pattern:
+
+```rust
+let mut cursor = QueryCursor::new();
+
+// Only execute patterns 0-5
+cursor.set_match_limit(5);
+
+for m in cursor.matches(&query, node, source) {
+    match m.pattern_index {
+        0 => handle_function(m),
+        1 => handle_class(m),
+        _ => {},
+    }
+}
+```
+
+## Syntax Highlighting Performance
+
+### Reuse Highlighter
+
+```rust
+let mut highlighter = Highlighter::new();
+
+let config = HighlightConfiguration::new(
+    language,
+    "javascript",
+    highlights_query,
+    injections_query, 
+    locals_query,
+)?;
+
+for file in files {
+    let events = highlighter.highlight(
+        &config,
+        file.as_bytes(),
+        None,
+        None,
+    )?;
+    render_highlights(events);
+}
+```
+
+### Configure Highlight Names
+
+Limit recognized highlights:
+
+```rust
+// Only recognize these highlights
+config.configure(&[
+    "keyword",
+    "function",
+    "string",
+    "comment",
+]);
+```
+
+Fewer highlights = faster matching.
+
+### Buffer HTML Output
+
+Pre-allocate HTML buffer:
+
+```rust
+let mut renderer = HtmlRenderer::new();
+
+// Pre-allocate based on estimated output size
+renderer.html.reserve(source.len() * 2);
+
+for event in events {
+    renderer.render(event, source, &attributes)?;
+}
+```
+
+<Info>
+`HtmlRenderer` reserves 10KB by default (`BUFFER_HTML_RESERVE_CAPACITY`).
+</Info>
+
+### Limit Injection Depth
+
+Language injections can nest deeply:
+
+```rust
+// Limit nesting to prevent exponential blowup
+const MAX_INJECTION_DEPTH: usize = 4;
+
+// In highlight configuration
+if layer_depth > MAX_INJECTION_DEPTH {
+    // Stop processing injections
+}
+```
+
+## Tags Generation Performance
+
+### Reuse TagsContext
+
+```rust
+let mut context = TagsContext::new();
+let config = TagsConfiguration::new(
+    language,
+    tags_query,
+    locals_query,
+)?;
+
+for file in files {
+    let tags = context.generate_tags(
+        &config,
+        file.as_bytes(),
+        None,
+    )?;
+    index_tags(tags);
+}
+```
+
+### Batch Tag Queries
+
+Process multiple files in parallel:
+
+```rust
+use rayon::prelude::*;
+
+files.par_iter().for_each(|file| {
+    // Each thread gets its own context
+    let mut context = TagsContext::new();
+    let tags = context.generate_tags(
+        &config,
+        file.as_bytes(),
+        None,
+    ).unwrap();
+    index_tags(tags);
+});
+```
+
+### Optimize for Large Files
+
+For files >10,000 lines:
+
+```rust
+// Only generate tags for definitions, skip references
+let query_source = r#"
+(function_definition
+  name: (identifier) @name) @definition.function
+
+(class_definition 
+  name: (identifier) @name) @definition.class
+"#;
+
+let config = TagsConfiguration::new(
+    language,
+    query_source,
+    "", // Empty locals query
+)?;
+```
+
+## Memory Management
+
+### Tree Copying
+
+Copying trees is cheap (atomic refcount increment):
+
+```rust
+// Cheap copy for thread safety
+let tree_copy = tree.clone();
+
+thread::spawn(move || {
+    process_tree(tree_copy);
+});
+
+// Original tree still usable
+process_tree(tree);
+```
+
+### Node Lifetimes
+
+Nodes borrow from the tree:
+
+```rust
+let root = tree.root_node();
+// root is valid while tree exists
+
+// Don't store nodes long-term
+struct BadCache<'a> {
+    node: Node<'a>,  // Ties cache lifetime to tree
+}
+
+// Instead, store node info
+struct GoodCache {
+    node_id: usize,
+    range: Range<usize>,
+}
+```
+
+### Avoid Leaking Parsers
+
+Parsers must be explicitly deleted in C:
+
+```c
+TSParser *parser = ts_parser_new();
+// ... use parser ...
+ts_parser_delete(parser);  // Don't forget!
+```
+
+In Rust, `Drop` handles cleanup automatically.
+
+## Benchmarking
+
+### Measure Full Parse Speed
+
+```rust
+use std::time::Instant;
+
+let source = std::fs::read_to_string("large_file.js")?;
+let mut parser = Parser::new();
+parser.set_language(&tree_sitter_javascript::language())?;
+
+let start = Instant::now();
+let tree = parser.parse(&source, None)?;
+let duration = start.elapsed();
+
+println!("Parsed {} bytes in {:?}", source.len(), duration);
+println!("Speed: {:.2} MB/s", 
+    source.len() as f64 / duration.as_secs_f64() / 1_000_000.0);
+```
+
+### Measure Incremental Parse Speed
+
+```rust
+let old_tree = parser.parse(&old_source, None)?;
+
+// Make a small edit
+let edit = make_edit(&old_source, 100, 5);
+old_tree.edit(&edit);
+
+let start = Instant::now();
+let new_tree = parser.parse(&new_source, Some(&old_tree))?;
+let duration = start.elapsed();
+
+println!("Incremental parse: {:?}", duration);
+```
+
+### Measure Query Speed
+
+```rust
+let query = Query::new(&language, query_source)?;
+let mut cursor = QueryCursor::new();
+
+let start = Instant::now();
+let matches: Vec<_> = cursor
+    .matches(&query, tree.root_node(), source.as_bytes())
+    .collect();
+let duration = start.elapsed();
+
+println!("Found {} matches in {:?}", matches.len(), duration);
+```
+
+## Common Performance Pitfalls
+
+### ❌ Creating Parsers in Hot Loops
+
+```rust
+// BAD: Creates parser every iteration
+for file in files {
+    let mut parser = Parser::new();
+    let tree = parser.parse(&file, None)?;
+}
+```
+
+### ❌ Not Using Incremental Parsing
+
+```rust
+// BAD: Full reparse on every edit
+fn on_edit(parser: &mut Parser, source: &str) {
+    let tree = parser.parse(source, None)?;  // Slow!
+}
+```
+
+### ❌ Compiling Queries Repeatedly
+
+```rust
+// BAD: Recompiles query every call
+fn find_functions(source: &str) {
+    let query = Query::new(&language, 
+        "(function_declaration) @func")?;
+}
+```
+
+### ❌ Not Setting Query Ranges
+
+```rust
+// BAD: Queries entire file even if only showing 50 lines
+let matches = cursor.matches(&query, tree.root_node(), source);
+```
+
+### ❌ Deep Language Injection Nesting
+
+```javascript
+// Pathological case: HTML -> JS -> Template Literal -> HTML -> ...
+const html = `
+  <script>
+    const nested = \`<script>...</script>\`;
+  </script>
+`;
+```
+
+Limit injection depth to prevent exponential slowdown.
+
+## Performance Targets
+
+Typical performance on modern hardware (Intel i7, 2.5 GHz):
+
+| Operation | File Size | Time | Throughput |
+|-----------|-----------|------|------------|
+| Full parse | 1MB JavaScript | ~10ms | ~100 MB/s |
+| Incremental parse | 1MB, 10 byte edit | ~0.5ms | N/A |
+| Query execution | 1MB, 10 patterns | ~5ms | ~200 MB/s |
+| Highlighting | 1MB | ~15ms | ~67 MB/s |
+| Tags generation | 1MB | ~20ms | ~50 MB/s |
+
+<Note>
+Actual performance varies by language grammar complexity and query patterns.
+</Note>
+
+## Profiling Tools
+
+### Rust Profiling
+
+```bash
+# Install flamegraph
+cargo install flamegraph
+
+# Profile your application
+cargo flamegraph --bin your-app
+
+# Open flamegraph.svg
+```
+
+### C Profiling
+
+```bash
+# Compile with profiling
+gcc -pg -o parser parser.c -ltree-sitter
+
+# Run to generate gmon.out
+./parser input.txt
+
+# Analyze
+gprof parser gmon.out
+```
+
+### Chrome Tracing
+
+For detailed timeline analysis:
+
+```rust
+use tracing_chrome::ChromeLayerBuilder;
+
+let (chrome_layer, _guard) = ChromeLayerBuilder::new()
+    .build();
+
+tracing_subscriber::registry()
+    .with(chrome_layer)
+    .init();
+
+// Trace points added automatically
+let tree = parser.parse(&source, None)?;
+```
+
+Open `trace-*.json` in Chrome's `chrome://tracing`.
+
+## Production Optimization Checklist
+
+<AccordionGroup>
+  <Accordion title="Parser Reuse" icon="recycle">
+    - [ ] Single parser instance per thread
+    - [ ] Incremental parsing for edits
+    - [ ] Cancellation flags for long operations
+    - [ ] Timeout limits set appropriately
+  </Accordion>
+  
+  <Accordion title="Query Optimization" icon="magnifying-glass">
+    - [ ] Queries compiled once and cached
+    - [ ] Query cursors reused
+    - [ ] Query ranges set for visible regions
+    - [ ] Patterns ordered by specificity
+  </Accordion>
+  
+  <Accordion title="Memory Management" icon="memory">
+    - [ ] Trees copied for thread safety
+    - [ ] No long-lived node references
+    - [ ] Parsers properly deleted (C only)
+    - [ ] Buffers pre-allocated for output
+  </Accordion>
+  
+  <Accordion title="Concurrency" icon="arrows-split-up-and-left">
+    - [ ] Separate parsers per thread
+    - [ ] Separate query cursors per thread
+    - [ ] Tree copies for parallel processing
+    - [ ] No shared mutable state
+  </Accordion>
+</AccordionGroup>
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="Implementation" icon="gears" href="/advanced/implementation">
+    Understand internal architecture
+  </Card>
+  <Card title="Advanced Parsing" icon="book" href="/using-parsers/advanced-parsing">
+    Learn advanced parsing techniques
+  </Card>
+</CardGroup>

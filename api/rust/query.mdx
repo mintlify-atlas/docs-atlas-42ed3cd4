@@ -1,0 +1,551 @@
+---
+title: Query API
+description: API reference for Tree-sitter queries in Rust
+---
+
+The Query API allows you to search syntax trees using pattern matching. Queries are written in a special S-expression syntax and can capture specific nodes that match certain patterns.
+
+## Query
+
+A `Query` is a set of patterns that match nodes in a syntax tree.
+
+### new
+
+```rust
+pub fn new(language: &Language, source: &str) -> Result<Self, QueryError>
+```
+
+Create a new query from a string containing one or more S-expression patterns. The query is associated with a particular language, and can only be run on syntax nodes parsed with that language.
+
+<ParamField path="language" type="&Language" required>
+  The language to associate with the query
+</ParamField>
+
+<ParamField path="source" type="&str" required>
+  The query source code in S-expression syntax
+</ParamField>
+
+```rust
+let query = Query::new(
+    &language,
+    r#"
+    (function_item
+      name: (identifier) @function.name
+      parameters: (parameters) @function.params)
+    "#
+)?;
+```
+
+### Pattern Information
+
+#### pattern_count
+
+```rust
+pub fn pattern_count(&self) -> usize
+```
+
+Get the number of patterns in the query.
+
+#### start_byte_for_pattern
+
+```rust
+pub fn start_byte_for_pattern(&self, pattern_index: usize) -> usize
+```
+
+Get the byte offset where the given pattern starts in the query's source.
+
+<ParamField path="pattern_index" type="usize" required>
+  The index of the pattern
+</ParamField>
+
+#### end_byte_for_pattern
+
+```rust
+pub fn end_byte_for_pattern(&self, pattern_index: usize) -> usize
+```
+
+Get the byte offset where the given pattern ends in the query's source.
+
+#### is_pattern_rooted
+
+```rust
+pub fn is_pattern_rooted(&self, index: usize) -> bool
+```
+
+Check if a given pattern within a query has a single root node.
+
+<ParamField path="index" type="usize" required>
+  The pattern index
+</ParamField>
+
+#### is_pattern_non_local
+
+```rust
+pub fn is_pattern_non_local(&self, index: usize) -> bool
+```
+
+Check if a given pattern is non-local (can match nodes at any depth).
+
+### Capture Management
+
+#### capture_names
+
+```rust
+pub const fn capture_names(&self) -> &[&str]
+```
+
+Get the names of the captures used in the query.
+
+```rust
+for name in query.capture_names() {
+    println!("Capture: @{}", name);
+}
+```
+
+#### capture_index_for_name
+
+```rust
+pub fn capture_index_for_name(&self, name: &str) -> Option<u32>
+```
+
+Get the index for a given capture name.
+
+<ParamField path="name" type="&str" required>
+  The name of the capture (without the @ prefix)
+</ParamField>
+
+#### capture_quantifiers
+
+```rust
+pub const fn capture_quantifiers(&self, index: usize) -> &[CaptureQuantifier]
+```
+
+Get the quantifiers of the captures for a given pattern.
+
+<ParamField path="index" type="usize" required>
+  The pattern index
+</ParamField>
+
+### Predicates
+
+#### property_predicates
+
+```rust
+pub const fn property_predicates(&self, index: usize) -> &[(QueryProperty, bool)]
+```
+
+Get the properties that are checked for the given pattern index. This includes predicates with the operators `is?` and `is-not?`.
+
+<ParamField path="index" type="usize" required>
+  The pattern index
+</ParamField>
+
+#### property_settings
+
+```rust
+pub const fn property_settings(&self, index: usize) -> &[QueryProperty]
+```
+
+Get the properties that are set for the given pattern index. This includes predicates with the operator `set!`.
+
+#### general_predicates
+
+```rust
+pub const fn general_predicates(&self, index: usize) -> &[QueryPredicate]
+```
+
+Get the other user-defined predicates associated with the given index. This includes predicates with operators other than `match?`, `eq?`, `not-eq?`, `is?`, `is-not?`, and `set!`.
+
+### Pattern Control
+
+#### disable_capture
+
+```rust
+pub fn disable_capture(&mut self, name: &str)
+```
+
+Disable a certain capture within a query. This prevents the capture from being returned in matches, and also avoids any resource usage associated with recording the capture.
+
+<ParamField path="name" type="&str" required>
+  The name of the capture to disable
+</ParamField>
+
+#### disable_pattern
+
+```rust
+pub fn disable_pattern(&mut self, index: usize)
+```
+
+Disable a certain pattern within a query. This prevents the pattern from matching, and also avoids any resource usage associated with the pattern.
+
+<ParamField path="index" type="usize" required>
+  The index of the pattern to disable
+</ParamField>
+
+## QueryCursor
+
+A `QueryCursor` is a stateful object for executing a `Query` on a syntax tree.
+
+### new
+
+```rust
+pub fn new() -> Self
+```
+
+Create a new cursor for executing a query. The cursor stores the state that is needed to iteratively search for matches.
+
+```rust
+let mut cursor = QueryCursor::new();
+```
+
+### Execution
+
+#### matches
+
+```rust
+pub fn matches<'query, 'cursor: 'query, 'tree, T: TextProvider<I>, I: AsRef<[u8]>>(
+    &'cursor mut self,
+    query: &'query Query,
+    node: Node<'tree>,
+    text_provider: T,
+) -> QueryMatches<'query, 'tree, T, I>
+```
+
+Iterate over all of the matches in the order that they were found. Requires the `StreamingIterator` trait to be in scope.
+
+<ParamField path="query" type="&Query" required>
+  The query to execute
+</ParamField>
+
+<ParamField path="node" type="Node" required>
+  The node to search within
+</ParamField>
+
+<ParamField path="text_provider" type="T" required>
+  A provider for accessing the source text
+</ParamField>
+
+```rust
+use tree_sitter::StreamingIterator;
+
+let mut cursor = QueryCursor::new();
+let mut matches = cursor.matches(&query, root_node, source.as_bytes());
+
+while let Some(match_) = matches.next() {
+    for capture in match_.captures {
+        println!("Capture @{}: {}",
+            query.capture_names()[capture.index as usize],
+            capture.node.utf8_text(source.as_bytes()).unwrap());
+    }
+}
+```
+
+#### captures
+
+```rust
+pub fn captures<'query, 'cursor: 'query, 'tree, T: TextProvider<I>, I: AsRef<[u8]>>(
+    &'cursor mut self,
+    query: &'query Query,
+    node: Node<'tree>,
+    text_provider: T,
+) -> QueryCaptures<'query, 'tree, T, I>
+```
+
+Iterate over all of the individual captures in the order that they appear. This is useful if you don't care about which pattern matched, and just want a single, ordered sequence of captures.
+
+```rust
+use tree_sitter::StreamingIterator;
+
+let mut cursor = QueryCursor::new();
+let mut captures = cursor.captures(&query, root_node, source.as_bytes());
+
+while let Some((match_, index)) = captures.next() {
+    let capture = &match_.captures[index];
+    println!("Capture: {}", capture.node.kind());
+}
+```
+
+### Range Configuration
+
+#### set_byte_range
+
+```rust
+pub fn set_byte_range(&mut self, range: ops::Range<usize>) -> &mut Self
+```
+
+Set the range in which the query will be executed, in terms of byte offsets.
+
+<ParamField path="range" type="Range<usize>" required>
+  The byte range to search within
+</ParamField>
+
+```rust
+cursor.set_byte_range(0..100);
+```
+
+#### set_point_range
+
+```rust
+pub fn set_point_range(&mut self, range: ops::Range<Point>) -> &mut Self
+```
+
+Set the range in which the query will be executed, in terms of rows and columns.
+
+<ParamField path="range" type="Range<Point>" required>
+  The point range to search within
+</ParamField>
+
+#### set_containing_byte_range
+
+```rust
+pub fn set_containing_byte_range(&mut self, range: ops::Range<usize>) -> &mut Self
+```
+
+Set the byte range within which all matches must be fully contained. This will restrict the query cursor to only return matches where all nodes are fully contained within the given range.
+
+#### set_containing_point_range
+
+```rust
+pub fn set_containing_point_range(&mut self, range: ops::Range<Point>) -> &mut Self
+```
+
+Set the point range within which all matches must be fully contained.
+
+#### set_max_start_depth
+
+```rust
+pub fn set_max_start_depth(&mut self, max_start_depth: Option<u32>) -> &mut Self
+```
+
+Set the maximum start depth for a query cursor. This prevents cursors from exploring children nodes at a certain depth. Set to `None` to remove the maximum start depth.
+
+<ParamField path="max_start_depth" type="Option<u32>">
+  The maximum depth, or `None` to disable
+</ParamField>
+
+### Match Limits
+
+#### match_limit
+
+```rust
+pub fn match_limit(&self) -> u32
+```
+
+Return the maximum number of in-progress matches for this cursor.
+
+#### set_match_limit
+
+```rust
+pub fn set_match_limit(&mut self, limit: u32)
+```
+
+Set the maximum number of in-progress matches for this cursor. The limit must be greater than 0 and less than or equal to 65536.
+
+<ParamField path="limit" type="u32" required>
+  The maximum number of in-progress matches
+</ParamField>
+
+#### did_exceed_match_limit
+
+```rust
+pub fn did_exceed_match_limit(&self) -> bool
+```
+
+Check if, on its last execution, this cursor exceeded its maximum number of in-progress matches.
+
+## QueryMatch
+
+A match of a query to a particular set of nodes.
+
+```rust
+pub struct QueryMatch<'cursor, 'tree> {
+    pub pattern_index: usize,
+    pub captures: &'cursor [QueryCapture<'tree>],
+    // ...
+}
+```
+
+<ParamField path="pattern_index" type="usize">
+  The index of the pattern that matched
+</ParamField>
+
+<ParamField path="captures" type="&[QueryCapture]">
+  The list of captures in this match
+</ParamField>
+
+### id
+
+```rust
+pub const fn id(&self) -> u32
+```
+
+Get the unique id for this match.
+
+### remove
+
+```rust
+pub fn remove(&self)
+```
+
+Remove this match from the query cursor's results.
+
+### nodes_for_capture_index
+
+```rust
+pub fn nodes_for_capture_index(
+    &self,
+    capture_ix: u32,
+) -> impl Iterator<Item = Node<'tree>> + '_
+```
+
+Get all nodes for a given capture index within this match.
+
+<ParamField path="capture_ix" type="u32" required>
+  The capture index
+</ParamField>
+
+## QueryCapture
+
+A particular node that has been captured with a particular name within a query.
+
+```rust
+pub struct QueryCapture<'tree> {
+    pub node: Node<'tree>,
+    pub index: u32,
+}
+```
+
+<ParamField path="node" type="Node<'tree>">
+  The captured node
+</ParamField>
+
+<ParamField path="index" type="u32">
+  The index of the capture (use `Query::capture_names()` to get the name)
+</ParamField>
+
+## Supporting Types
+
+### CaptureQuantifier
+
+Quantifiers for captures.
+
+```rust
+pub enum CaptureQuantifier {
+    Zero,
+    ZeroOrOne,
+    ZeroOrMore,
+    One,
+    OneOrMore,
+}
+```
+
+### QueryProperty
+
+A key-value pair associated with a particular pattern in a query.
+
+```rust
+pub struct QueryProperty {
+    pub key: Box<str>,
+    pub value: Option<Box<str>>,
+    pub capture_id: Option<usize>,
+}
+```
+
+### QueryPredicate
+
+A user-defined predicate associated with a pattern.
+
+```rust
+pub struct QueryPredicate {
+    pub operator: Box<str>,
+    pub args: Box<[QueryPredicateArg]>,
+}
+```
+
+### QueryPredicateArg
+
+An argument to a query predicate.
+
+```rust
+pub enum QueryPredicateArg {
+    Capture(u32),
+    String(Box<str>),
+}
+```
+
+## Examples
+
+### Basic Query
+
+```rust
+use tree_sitter::{Query, QueryCursor, StreamingIterator};
+
+let query = Query::new(
+    &language,
+    r#"
+    (function_item
+      name: (identifier) @function.name)
+    "#
+)?;
+
+let mut cursor = QueryCursor::new();
+let matches = cursor.matches(&query, root_node, source.as_bytes());
+
+for match_ in matches {
+    for capture in match_.captures {
+        let name = query.capture_names()[capture.index as usize];
+        let text = capture.node.utf8_text(source.as_bytes()).unwrap();
+        println!("@{}: {}", name, text);
+    }
+}
+```
+
+### Query with Predicates
+
+```rust
+let query = Query::new(
+    &language,
+    r#"
+    (function_item
+      name: (identifier) @name
+      (#eq? @name "main"))
+    "#
+)?;
+
+let mut cursor = QueryCursor::new();
+let mut matches = cursor.matches(&query, root_node, source.as_bytes());
+
+while let Some(match_) = matches.next() {
+    println!("Found main function!");
+}
+```
+
+### Filtering by Range
+
+```rust
+let mut cursor = QueryCursor::new();
+cursor.set_byte_range(100..500);
+
+let matches = cursor.matches(&query, root_node, source.as_bytes());
+// Only matches within bytes 100-500 will be returned
+```
+
+### Using Captures Iterator
+
+```rust
+use tree_sitter::StreamingIterator;
+
+let query = Query::new(
+    &language,
+    "(identifier) @id"
+)?;
+
+let mut cursor = QueryCursor::new();
+let mut captures = cursor.captures(&query, root_node, source.as_bytes());
+
+while let Some((match_, index)) = captures.next() {
+    let capture = &match_.captures[index];
+    let text = capture.node.utf8_text(source.as_bytes()).unwrap();
+    println!("Identifier: {}", text);
+}
+```

@@ -1,0 +1,260 @@
+---
+title: Getting Started
+description: Set up your development environment and create your first Tree-sitter parser
+---
+
+# Getting Started
+
+This guide will walk you through setting up your development environment and creating your first Tree-sitter parser.
+
+## Dependencies
+
+To develop a Tree-sitter parser, you need to install two dependencies:
+
+### JavaScript Runtime
+
+Tree-sitter grammars are written in JavaScript, and Tree-sitter uses a JavaScript runtime (the default being [Node.js](https://nodejs.org)) to interpret JavaScript files.
+
+<Note>
+The runtime command (default: `node`) must be in one of the directories in your [`PATH`](https://en.wikipedia.org/wiki/PATH_(variable)).
+</Note>
+
+### C Compiler
+
+Tree-sitter creates parsers that are written in C. To run and test these parsers with the `tree-sitter parse` or `tree-sitter test` commands, you must have a C/C++ compiler installed.
+
+<Tip>
+Tree-sitter will try to look for compilers in the standard places for each platform (gcc, clang, or MSVC).
+</Tip>
+
+## Installation
+
+You can install the Tree-sitter CLI in several ways:
+
+<CodeGroup>
+```bash Cargo (Recommended)
+cargo install tree-sitter-cli --locked
+```
+
+```bash From Source
+# Clone the repository
+git clone https://github.com/tree-sitter/tree-sitter.git
+cd tree-sitter
+
+# Build the CLI
+cd crates/cli
+cargo build --release
+```
+
+```bash npm
+npm install -g tree-sitter-cli
+```
+
+```bash Download Binary
+# Download from GitHub releases
+curl -LO https://github.com/tree-sitter/tree-sitter/releases/latest/download/tree-sitter-linux-x64.gz
+gunzip tree-sitter-linux-x64.gz
+chmod +x tree-sitter-linux-x64
+mv tree-sitter-linux-x64 /usr/local/bin/tree-sitter
+```
+</CodeGroup>
+
+<Warning>
+The npm installation method is fast but only works on certain platforms because it relies on pre-built binaries.
+</Warning>
+
+## Project Setup
+
+The preferred convention is to name your parser repository "tree-sitter-" followed by the name of the language in lowercase.
+
+<Steps>
+  <Step title="Create the project directory">
+    ```bash
+    mkdir tree-sitter-mylang
+    cd tree-sitter-mylang
+    ```
+    
+    Replace `mylang` with the lowercase name of your language.
+  </Step>
+  
+  <Step title="Initialize the project">
+    ```bash
+    tree-sitter init
+    ```
+    
+    This command will prompt you for:
+    - Language name
+    - Parser description
+    - Author information
+    - License
+    
+    The CLI will create the necessary project structure and files.
+  </Step>
+  
+  <Step title="Review the generated files">
+    The `init` command creates several files:
+    
+    - `grammar.js` - Your grammar definition
+    - `package.json` - Node.js package configuration
+    - `Cargo.toml` - Rust package configuration
+    - `bindings/` - Language bindings
+    - `src/` - Generated parser code (created later)
+  </Step>
+</Steps>
+
+## Your First Grammar
+
+After initialization, you'll have a `grammar.js` file with the following structure:
+
+```javascript grammar.js
+/**
+ * @file Parser for MyLang
+ * @author Your Name <your.email@example.com>
+ * @license MIT
+ */
+
+/// <reference types="tree-sitter-cli/dsl" />
+// @ts-check
+
+export default grammar({
+  name: 'mylang',
+
+  rules: {
+    // TODO: add the actual grammar rules
+    source_file: $ => 'hello'
+  }
+});
+```
+
+<Note>
+The triple-slash reference and `@ts-check` comments enable TypeScript type checking and autocompletion in your editor.
+</Note>
+
+### Understanding the Template
+
+Let's break down the key parts:
+
+- **File header** - Documentation comments with description, author, and license
+- **Type reference** - Enables IDE support for the grammar DSL
+- **Export** - The grammar object is exported as the default export
+- **Name** - Must match your language name
+- **Rules** - Define the structure of your language
+
+## Generate the Parser
+
+Now generate the C code for your parser:
+
+<Steps>
+  <Step title="Run the generate command">
+    ```bash
+    tree-sitter generate
+    ```
+    
+    This creates the parser code in the `src/` directory:
+    - `parser.c` - The generated parser
+    - `tree_sitter/parser.h` - Header file
+    - `node-types.json` - Node type definitions
+  </Step>
+  
+  <Step title="Test the parser">
+    Create a test file:
+    
+    ```bash
+    echo 'hello' > example-file
+    tree-sitter parse example-file
+    ```
+    
+    You should see:
+    
+    ```text
+    (source_file [0, 0] - [1, 0])
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+The numbers in brackets `[0, 0] - [1, 0]` represent the position in the file: `[row, column]` for start and end.
+</Tip>
+
+## Enable IDE Support
+
+For the best development experience, install the Tree-sitter TypeScript definitions:
+
+```bash
+npm install
+```
+
+This downloads the TypeScript API and enables:
+
+- **Autocompletion** - Suggestions for grammar DSL functions
+- **Type checking** - Catch errors before generating
+- **Documentation** - Inline docs for all functions
+
+<CodeGroup>
+```javascript Example with Autocompletion
+export default grammar({
+  name: 'mylang',
+  
+  rules: {
+    source_file: $ => repeat($._statement),
+    
+    _statement: $ => choice(
+      $.return_statement,
+      $.expression_statement
+    ),
+    
+    // Your editor will suggest: seq, choice, repeat, optional, etc.
+  }
+});
+```
+</CodeGroup>
+
+## Development Commands
+
+Here are the essential commands you'll use during development:
+
+<CardGroup cols={2}>
+  <Card title="tree-sitter generate" icon="gear">
+    Generate the parser from your grammar
+  </Card>
+  
+  <Card title="tree-sitter test" icon="check">
+    Run all tests in `test/corpus/`
+  </Card>
+  
+  <Card title="tree-sitter parse" icon="file">
+    Parse a file and display the syntax tree
+  </Card>
+  
+  <Card title="tree-sitter build" icon="hammer">
+    Compile the parser as a shared library
+  </Card>
+</CardGroup>
+
+### Parse Command Options
+
+```bash
+# Show debug output
+tree-sitter parse --debug example.txt
+
+# Show debug graph (requires graphviz)
+tree-sitter parse --debug-graph example.txt
+
+# Parse as XML
+tree-sitter parse --xml example.txt
+
+# Time the parse
+tree-sitter parse --time example.txt
+```
+
+## Next Steps
+
+Now that you have a working parser, you're ready to:
+
+1. Learn about the [Grammar DSL](/creating-parsers/grammar-dsl) functions
+2. Start [Writing Grammar](/creating-parsers/writing-grammar) rules
+3. Add [Tests](/creating-parsers/testing) for your parser
+
+<Tip>
+Start by examining existing Tree-sitter parsers on GitHub to see real-world examples. The [tree-sitter organization](https://github.com/tree-sitter) maintains parsers for many popular languages.
+</Tip>

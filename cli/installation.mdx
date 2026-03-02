@@ -1,0 +1,82 @@
+---
+title: Installation
+description: How to install the Tree-sitter CLI
+---
+
+The Tree-sitter CLI is required to create and develop Tree-sitter parsers. There are several ways to install it.
+
+## Prerequisites
+
+Before installing the Tree-sitter CLI, ensure you have:
+
+- **A JavaScript runtime** - Tree-sitter grammars are written in JavaScript. The CLI requires Node.js (or another JavaScript runtime) to interpret grammar files. The runtime command (default: `node`) must be in your `PATH`.
+
+- **A C Compiler** - Tree-sitter creates parsers written in C. To compile and test parsers, you need a C/C++ compiler installed. The CLI will look for compilers in the standard platform locations.
+
+## Installation Methods
+
+### Cargo (Recommended)
+
+Install from [crates.io](https://crates.io/crates/tree-sitter-cli) using Rust's package manager:
+
+```bash
+cargo install tree-sitter-cli --locked
+```
+
+This method works on all platforms and provides the latest version.
+
+### Build from Source
+
+Build the CLI from source using Cargo:
+
+```bash
+git clone https://github.com/tree-sitter/tree-sitter.git
+cd tree-sitter/crates/cli
+cargo install --path . --locked
+```
+
+See [the contributing docs](https://tree-sitter.github.io/tree-sitter/contributing) for more information.
+
+### NPM
+
+Install the [Node.js module](https://www.npmjs.com/package/tree-sitter-cli) using npm:
+
+```bash
+npm install -g tree-sitter-cli
+```
+
+<Warning>
+  This approach is fast but only works on certain platforms as it relies on pre-built binaries.
+</Warning>
+
+### Pre-built Binaries
+
+Download a binary for your platform from [GitHub releases](https://github.com/tree-sitter/tree-sitter/releases) and add it to your `PATH`.
+
+## Verifying Installation
+
+After installation, verify the CLI is available:
+
+```bash
+tree-sitter --version
+```
+
+You should see output showing the version number.
+
+## Next Steps
+
+Once installed, you can:
+
+1. Initialize a new parser project with [`tree-sitter init`](/cli/init)
+2. Create a config file with [`tree-sitter init-config`](/cli/init-config)
+3. Start developing your grammar
+
+## Platform-Specific Notes
+
+### macOS/iOS
+
+You can set `MACOSX_DEPLOYMENT_TARGET` or `IPHONEOS_DEPLOYMENT_TARGET` to define the minimum supported version when building parsers.
+
+### Windows
+
+The CLI works on Windows but some safety checks (like symbol validation with `nm`) are not performed.

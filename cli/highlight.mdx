@@ -1,0 +1,182 @@
+---
+title: highlight
+description: Highlight a file using syntax highlighting
+---
+
+The `highlight` command runs syntax highlighting on an arbitrary file. It can output colors directly to your terminal using ANSI escape codes, or produce HTML.
+
+```bash
+tree-sitter highlight [OPTIONS] [PATHS]...
+```
+
+**Aliases:** `hi`
+
+For more information about syntax highlighting, see [Syntax Highlighting](https://tree-sitter.github.io/tree-sitter/syntax-highlighting).
+
+## Input Sources
+
+### File Paths
+
+Pass file paths directly:
+
+```bash
+tree-sitter highlight example.js
+```
+
+### Paths File
+
+Use `--paths` to provide a file containing paths:
+
+```bash
+tree-sitter highlight --paths file-list.txt
+```
+
+### Standard Input
+
+If no paths are provided, input is read from stdin:
+
+```bash
+echo "const x = 42;" | tree-sitter highlight --scope source.js
+```
+
+## Output Formats
+
+### Terminal (ANSI)
+
+By default, outputs colored text to the terminal:
+
+```bash
+tree-sitter highlight example.js
+```
+
+### HTML
+
+Generate an HTML document with syntax highlighting:
+
+```bash
+tree-sitter highlight --html example.js > output.html
+```
+
+### HTML with CSS Classes
+
+Generate HTML with CSS classes instead of inline styles:
+
+```bash
+tree-sitter highlight --html --css-classes example.js > output.html
+```
+
+## Options
+
+### Output Options
+
+<ParamField path="-H, --html" type="flag">
+  Output an HTML document with syntax highlighting.
+</ParamField>
+
+<ParamField path="--css-classes" type="flag">
+  Output HTML with CSS classes instead of inline styles. Must be used with `--html`.
+</ParamField>
+
+<ParamField path="-q, --quiet" type="flag">
+  Suppress main output.
+</ParamField>
+
+<ParamField path="-t, --time" type="flag">
+  Print the time taken to highlight the file.
+</ParamField>
+
+### Validation Options
+
+<ParamField path="--check" type="flag">
+  Check that the highlighting captures conform strictly to the standards.
+</ParamField>
+
+<ParamField path="--captures-path" type="path">
+  The path to a file with captures. These captures are considered the "standard" captures to compare against when using `--check`.
+</ParamField>
+
+### Query Options
+
+<ParamField path="--query-paths" type="paths">
+  The paths to query files to use for syntax highlighting. These should end in `highlights.scm`. Can be specified multiple times.
+</ParamField>
+
+### Input Options
+
+<ParamField path="--paths" type="file">
+  The path to a file that contains paths to source files to highlight.
+</ParamField>
+
+<ParamField path="-p, --grammar-path" type="path">
+  The path to the directory containing the grammar. Implies `--rebuild`.
+</ParamField>
+
+<ParamField path="--scope" type="scope">
+  The language scope to use for syntax highlighting. Useful when the language is ambiguous.
+</ParamField>
+
+<ParamField path="--encoding" type="encoding">
+  The encoding of the input files. One of `utf8`, `utf16-le`, `utf16-be`.
+</ParamField>
+
+<ParamField path="-n, --test-number" type="number">
+  Highlight the contents of a specific test.
+</ParamField>
+
+### Build Options
+
+<ParamField path="-r, --rebuild" type="flag">
+  Force a rebuild of the parser before highlighting.
+</ParamField>
+
+<ParamField path="--config-path" type="path">
+  The path to an alternative configuration (`config.json`) file. See [init-config](/cli/init-config).
+</ParamField>
+
+## Examples
+
+### Highlight to Terminal
+
+```bash
+tree-sitter highlight example.js
+```
+
+### Generate HTML
+
+```bash
+tree-sitter highlight --html example.js > output.html
+```
+
+### Generate HTML with CSS Classes
+
+```bash
+tree-sitter highlight --html --css-classes example.js > output.html
+```
+
+### Highlight Multiple Files
+
+```bash
+tree-sitter highlight src/**/*.js
+```
+
+### Highlight with Custom Query
+
+```bash
+tree-sitter highlight --query-paths custom-highlights.scm example.js
+```
+
+### Check Highlight Conformance
+
+```bash
+tree-sitter highlight --check --captures-path standard-captures.txt example.js
+```
+
+### Highlight with Performance Measurement
+
+```bash
+tree-sitter highlight --time example.js
+```
+
+## Theme Configuration
+
+Colors are controlled by the theme in your config file. See [init-config](/cli/init-config#theme) for information on configuring the theme.

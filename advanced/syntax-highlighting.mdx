@@ -1,0 +1,310 @@
+---
+title: Syntax Highlighting
+description: Learn how Tree-sitter's built-in syntax highlighting system works, including highlight queries, local variables, and language injection.
+---
+
+Tree-sitter includes a powerful syntax highlighting system via the `tree-sitter-highlight` library, which is used on GitHub.com for highlighting code in multiple languages.
+
+## Overview
+
+The syntax highlighting system requires three types of files:
+
+1. **Per-user configuration** - `~/.config/tree-sitter/config.json`
+2. **Language configuration** - `tree-sitter.json` in grammar repositories
+3. **Query files** - Located in the `queries/` folder
+
+<Info>
+All configuration files use the `.scm` extension, which stands for Scheme, reflecting the Lisp-like syntax used in Tree-sitter queries.
+</Info>
+
+## Language Configuration
+
+The `tree-sitter.json` file contains metadata about the parser and language:
+
+### Basic Information
+
+- **`scope`** (required) - Language identifier like `"source.js"` matching TextMate grammar conventions
+- **`path`** (optional) - Relative path to the parser's `src/` directory (default: `"."`) 
+- **`external-files`** (optional) - Files to check for modifications during recompilation
+
+### Language Detection
+
+- **`file-types`** - Array of filename suffixes (e.g., `[".js", ".jsx"]`)
+- **`first-line-regex`** - Regex tested against the first line of a file
+- **`content-regex`** - Regex tested against file contents for disambiguation
+- **`injection-regex`** - Regex for matching language injection sites
+
+### Query Paths
+
+- **`highlights`** - Path to highlight query (default: `queries/highlights.scm`)
+- **`locals`** - Path to local variable query (default: `queries/locals.scm`)
+- **`injections`** - Path to injection query (default: `queries/injections.scm`)
+
+## Highlight Queries
+
+Highlight queries assign *highlight names* to syntax nodes using captures:
+
+```scheme
+; highlights.scm
+"func" @keyword
+"return" @keyword
+(type_identifier) @type
+(int_literal) @number
+(function_declaration name: (identifier) @function)
+```
+
+### Standard Highlight Names
+
+Common highlight names include:
+
+- `keyword` - Language keywords
+- `function` / `function.builtin` - Function names
+- `type` / `type.builtin` - Type identifiers  
+- `property` / `property.builtin` - Object properties
+- `string` / `string.escape` - String literals
+- `number` - Numeric literals
+- `comment` / `comment.documentation` - Comments
+- `variable` / `variable.parameter` - Variables
+- `operator` - Operators
+- `punctuation.bracket` / `punctuation.delimiter` - Punctuation
+
+<Tip>
+Highlight names can be dot-separated for specificity. For example, `function.builtin` is more specific than `function`.
+</Tip>
+
+### Theme Configuration
+
+Map highlight names to colors in your config:
+
+```json
+{
+  "theme": {
+    "keyword": "purple",
+    "function": "blue",
+    "type": "green",
+    "number": "brown"
+  }
+}
+```
+
+## Local Variables
+
+The local variables query tracks scopes and variables to ensure consistent coloring:
+
+### Special Capture Names
+
+- **`@local.scope`** - Indicates a node that introduces a new local scope
+- **`@local.definition`** - Marks the *name* of a definition in the current scope
+- **`@local.reference`** - Marks a name that may refer to an earlier definition
+
+```scheme
+; locals.scm
+(method) @local.scope
+(do_block) @local.scope
+
+(method_parameters (identifier) @local.definition)
+(block_parameters (identifier) @local.definition)
+(assignment left:(identifier) @local.definition)
+
+(identifier) @local.reference
+```
+
+### Excluding Local Variables
+
+Use the `(#is-not? local)` predicate to disable highlighting for local variables:
+
+```scheme
+((identifier) @function.method
+ (#is-not? local))
+```
+
+### Ignoring Nodes
+
+Use `@ignore` to exclude specific nodes from tagging:
+
+```scheme
+(expression (identifier) @ignore)
+(identifier) @local.reference
+```
+
+## Language Injection
+
+Language injection allows parsing code in multiple languages within a single file.
+
+### Injection Captures
+
+- **`@injection.content`** - Node whose contents should be re-parsed in another language
+- **`@injection.language`** - Node containing the language name to use
+
+### Injection Properties
+
+- **`injection.language`** - Hard-code a specific language name
+- **`injection.combined`** - Parse all matching nodes as one nested document
+- **`injection.include-children`** - Include child nodes' text in the injection
+- **`injection.self`** - Parse using the same language as the node
+- **`injection.parent`** - Parse using the parent language
+
+### Example: Ruby Heredoc
+
+```scheme
+; Detect language from heredoc delimiter
+(heredoc_body
+  (heredoc_end) @injection.language) @injection.content
+
+; Force a specific language
+((heredoc_body) @injection.content
+ (#set! injection.language "ruby"))
+```
+
+## Implementation Details
+
+The `tree-sitter-highlight` crate provides the core functionality:
+
+### Key Types
+
+- **`HighlightConfiguration`** - Immutable, thread-safe language configuration
+- **`Highlighter`** - Reusable highlighter instance with parser and query cursors
+- **`HighlightEvent`** - Represents a highlighting step:
+  - `Source { start, end }` - Plain source code range
+  - `HighlightStart(Highlight)` - Begin highlighted region
+  - `HighlightEnd` - End highlighted region
+
+### Performance Optimizations
+
+<CodeGroup>
+```rust Highlighter Reuse
+// Reuse Highlighter for best performance
+let mut highlighter = Highlighter::new();
+
+for file in files {
+    let events = highlighter.highlight(
+        &config,
+        source,
+        encoding,
+        cancellation_flag,
+    )?;
+}
+```
+
+```rust Configuration
+// HighlightConfiguration is immutable and thread-safe
+let config = HighlightConfiguration::new(
+    language,
+    "javascript",
+    highlights_query,
+    injections_query,
+    locals_query,
+)?;
+
+// Configure recognized highlight names
+config.configure(&[
+    "keyword",
+    "function",
+    "string",
+    // ...
+]);
+```
+</CodeGroup>
+
+### Cancellation Support
+
+Highlighting can be cancelled using an atomic flag:
+
+```rust
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+let cancellation_flag = AtomicUsize::new(0);
+
+let events = highlighter.highlight(
+    &config,
+    source,
+    None,
+    Some(&cancellation_flag),
+)?;
+
+// From another thread:
+cancellation_flag.store(1, Ordering::Relaxed);
+```
+
+The highlighter checks the flag every 100 iterations (defined by `CANCELLATION_CHECK_INTERVAL`).
+
+## Unit Testing
+
+Tree-sitter provides a built-in testing system for highlight queries:
+
+```javascript
+// test/highlight/example.js
+var abc = function(d) {
+  // <- keyword
+  //          ^ keyword
+  //               ^ variable.parameter
+  // ^ function
+
+  if (a) {
+  // <- keyword
+  // ^ punctuation.bracket
+
+    foo(`foo ${bar}`);
+    // <- function
+    //    ^ string
+    //          ^ variable
+  }
+
+  baz();
+  // <- !variable
+};
+```
+
+### Test Syntax
+
+- **Caret (`^`)** - Tests the column at the caret position on the previous non-test line
+- **Arrow (`<-`)** - Tests at the same column as the comment character
+- **Negation (`!`)** - Asserts the scope does NOT match (e.g., `!keyword`)
+
+Run tests with:
+
+```bash
+tree-sitter test
+```
+
+## HTML Rendering
+
+The `HtmlRenderer` converts highlight events to HTML:
+
+```rust
+let mut renderer = HtmlRenderer::new();
+
+for event in events {
+    renderer.render(event, source, &attributes)?;
+}
+
+let html = String::from_utf8(renderer.html)?;
+```
+
+<Info>
+The HTML buffer pre-allocates 10KB (`BUFFER_HTML_RESERVE_CAPACITY`) and the lines buffer pre-allocates space for 1000 lines (`BUFFER_LINES_RESERVE_CAPACITY`) to minimize reallocations.
+</Info>
+
+## Command-Line Usage
+
+```bash
+# Highlight a file
+tree-sitter highlight file.js
+
+# Highlight with specific queries
+tree-sitter highlight --query path/to/highlights.scm file.js
+
+# Output HTML
+tree-sitter highlight --html file.js > output.html
+```
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="Code Navigation" icon="compass" href="/advanced/code-navigation">
+    Learn about tagging and code navigation
+  </Card>
+  <Card title="Query Syntax" icon="code" href="/using-parsers/queries">
+    Deep dive into Tree-sitter query language
+  </Card>
+</CardGroup>

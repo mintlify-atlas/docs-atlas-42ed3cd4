@@ -1,0 +1,136 @@
+---
+title: dump-languages
+description: Print info about all known language parsers
+---
+
+The `dump-languages` command prints a list of all the languages that the CLI knows about. This is useful for debugging purposes or for scripting.
+
+```bash
+tree-sitter dump-languages [OPTIONS]
+```
+
+**Aliases:** `langs`
+
+## Output Format
+
+The command outputs information about each discovered parser, including:
+
+- Language name
+- Path to the parser
+- Scope information
+- File type associations
+
+## Parser Discovery
+
+The CLI searches for parsers in the directories specified by the [`parser-directories`](/cli/init-config#parser-directories) field in your config file.
+
+Any folder whose name begins with `tree-sitter-` in these directories is treated as a Tree-sitter grammar repository.
+
+## Options
+
+<ParamField path="--config-path" type="path">
+  The path to the configuration file. By default, the CLI uses the default location as explained in [init-config](/cli/init-config).
+  
+  This flag allows you to explicitly override that default and use a config defined elsewhere.
+</ParamField>
+
+## Examples
+
+### List All Languages
+
+```bash
+tree-sitter dump-languages
+```
+
+Example output:
+
+```
+java: /home/user/code/tree-sitter-java
+  scope: source.java
+  file-types: java
+
+javascript: /home/user/code/tree-sitter-javascript
+  scope: source.js
+  file-types: js, jsx, mjs, cjs
+
+python: /home/user/code/tree-sitter-python
+  scope: source.python
+  file-types: py, pyi
+```
+
+### Use Custom Config
+
+```bash
+tree-sitter dump-languages --config-path ~/.config/tree-sitter/custom-config.json
+```
+
+### Pipe to File
+
+```bash
+tree-sitter dump-languages > languages.txt
+```
+
+### Count Languages
+
+```bash
+tree-sitter dump-languages | grep -c "scope:"
+```
+
+## Use Cases
+
+### Debugging
+
+Verify that the CLI can find your parser:
+
+```bash
+tree-sitter dump-languages | grep my-language
+```
+
+### Scripting
+
+Extract parser paths for automation:
+
+```bash
+tree-sitter dump-languages | awk '/^[a-z]/ {print $2}'
+```
+
+### Documentation
+
+Generate a list of supported languages:
+
+```bash
+tree-sitter dump-languages > SUPPORTED_LANGUAGES.txt
+```
+
+## Troubleshooting
+
+### No Languages Found
+
+If no languages are listed:
+
+1. Check your config file exists:
+   ```bash
+   cat ~/.config/tree-sitter/config.json
+   ```
+
+2. Verify parser directories are set:
+   ```json
+   {
+     "parser-directories": [
+       "/path/to/parsers"
+     ]
+   }
+   ```
+
+3. Ensure parser folders start with `tree-sitter-`:
+   ```bash
+   ls ~/code/ | grep tree-sitter-
+   ```
+
+### Parser Not Showing Up
+
+If a specific parser isn't listed:
+
+1. Verify the directory name starts with `tree-sitter-`
+2. Check that `tree-sitter.json` exists in the parser directory
+3. Ensure the parser directory is in a configured `parser-directories` path

@@ -1,0 +1,695 @@
+---
+title: Query API
+description: Functions for creating and executing queries on syntax trees
+---
+
+The Query API provides functions for creating queries from S-expression patterns and executing them on syntax trees to find matching nodes.
+
+## Creating and deleting queries
+
+### ts_query_new
+
+Create a new query from a string containing one or more S-expression patterns.
+
+```c
+TSQuery *ts_query_new(
+  const TSLanguage *language,
+  const char *source,
+  uint32_t source_len,
+  uint32_t *error_offset,
+  TSQueryError *error_type
+);
+```
+
+<ParamField path="language" type="const TSLanguage *">
+  The language for this query
+</ParamField>
+
+<ParamField path="source" type="const char *">
+  The query source code
+</ParamField>
+
+<ParamField path="source_len" type="uint32_t">
+  Length of the source code in bytes
+</ParamField>
+
+<ParamField path="error_offset" type="uint32_t *">
+  Output parameter for error byte offset
+</ParamField>
+
+<ParamField path="error_type" type="TSQueryError *">
+  Output parameter for error type
+</ParamField>
+
+**Returns:** A new query on success, or `NULL` if a pattern is invalid.
+
+The query is associated with a particular language and can only be run on syntax nodes parsed with that language.
+
+If all patterns are valid, this returns a `TSQuery`. If a pattern is invalid, this returns `NULL` and provides:
+1. The byte offset of the error written to `error_offset`
+2. The type of error written to `error_type`
+
+**Example:**
+```c
+uint32_t error_offset;
+TSQueryError error_type;
+
+const char *query_source = "(function_declaration name: (identifier) @function.name)";
+TSQuery *query = ts_query_new(
+  language,
+  query_source,
+  strlen(query_source),
+  &error_offset,
+  &error_type
+);
+
+if (query == NULL) {
+  printf("Query error at byte %u: type %d\n", error_offset, error_type);
+}
+```
+
+### ts_query_delete
+
+Delete a query, freeing all of the memory that it used.
+
+```c
+void ts_query_delete(TSQuery *self);
+```
+
+<ParamField path="self" type="TSQuery *">
+  The query to delete
+</ParamField>
+
+## Query information
+
+### ts_query_pattern_count
+
+Get the number of patterns in the query.
+
+```c
+uint32_t ts_query_pattern_count(const TSQuery *self);
+```
+
+<ParamField path="self" type="const TSQuery *">
+  The query instance
+</ParamField>
+
+**Returns:** The number of patterns.
+
+### ts_query_capture_count
+
+Get the number of captures in the query.
+
+```c
+uint32_t ts_query_capture_count(const TSQuery *self);
+```
+
+<ParamField path="self" type="const TSQuery *">
+  The query instance
+</ParamField>
+
+**Returns:** The number of captures.
+
+### ts_query_string_count
+
+Get the number of string literals in the query.
+
+```c
+uint32_t ts_query_string_count(const TSQuery *self);
+```
+
+<ParamField path="self" type="const TSQuery *">
+  The query instance
+</ParamField>
+
+**Returns:** The number of string literals.
+
+### ts_query_start_byte_for_pattern
+
+Get the byte offset where the given pattern starts in the query's source.
+
+```c
+uint32_t ts_query_start_byte_for_pattern(const TSQuery *self, uint32_t pattern_index);
+```
+
+<ParamField path="self" type="const TSQuery *">
+  The query instance
+</ParamField>
+
+<ParamField path="pattern_index" type="uint32_t">
+  The pattern index
+</ParamField>
+
+**Returns:** The byte offset where the pattern starts.
+
+This can be useful when combining queries by concatenating their source code strings.
+
+### ts_query_end_byte_for_pattern
+
+Get the byte offset where the given pattern ends in the query's source.
+
+```c
+uint32_t ts_query_end_byte_for_pattern(const TSQuery *self, uint32_t pattern_index);
+```
+
+<ParamField path="self" type="const TSQuery *">
+  The query instance
+</ParamField>
+
+<ParamField path="pattern_index" type="uint32_t">
+  The pattern index
+</ParamField>
+
+**Returns:** The byte offset where the pattern ends.
+
+### ts_query_predicates_for_pattern
+
+Get all of the predicates for the given pattern in the query.
+
+```c
+const TSQueryPredicateStep *ts_query_predicates_for_pattern(
+  const TSQuery *self,
+  uint32_t pattern_index,
+  uint32_t *step_count
+);
+```
+
+<ParamField path="self" type="const TSQuery *">
+  The query instance
+</ParamField>
+
+<ParamField path="pattern_index" type="uint32_t">
+  The pattern index
+</ParamField>
+
+<ParamField path="step_count" type="uint32_t *">
+  Output parameter for the number of steps
+</ParamField>
+
+**Returns:** Pointer to the array of predicate steps.
+
+The predicates are represented as a single array of steps. There are three types of steps:
+- `TSQueryPredicateStepTypeCapture` - Steps representing capture names. Use `ts_query_capture_name_for_id` to get the name.
+- `TSQueryPredicateStepTypeString` - Steps representing literal strings. Use `ts_query_string_value_for_id` to get the value.
+- `TSQueryPredicateStepTypeDone` - Sentinel steps marking the end of individual predicates.
+
+### ts_query_is_pattern_rooted
+
+Check if the given pattern in the query has a single root node.
+
+```c
+bool ts_query_is_pattern_rooted(const TSQuery *self, uint32_t pattern_index);
+```
+
+<ParamField path="self" type="const TSQuery *">
+  The query instance
+</ParamField>
+
+<ParamField path="pattern_index" type="uint32_t">
+  The pattern index
+</ParamField>
+
+**Returns:** `true` if the pattern has a single root node.
+
+### ts_query_is_pattern_non_local
+
+Check if the given pattern in the query is non-local.
+
+```c
+bool ts_query_is_pattern_non_local(const TSQuery *self, uint32_t pattern_index);
+```
+
+<ParamField path="self" type="const TSQuery *">
+  The query instance
+</ParamField>
+
+<ParamField path="pattern_index" type="uint32_t">
+  The pattern index
+</ParamField>
+
+**Returns:** `true` if the pattern is non-local.
+
+A non-local pattern has multiple root nodes and can match within a repeating sequence of nodes, as specified by the grammar. Non-local patterns disable certain optimizations that would otherwise be possible when executing a query on a specific range of a syntax tree.
+
+### ts_query_is_pattern_guaranteed_at_step
+
+Check if a given pattern is guaranteed to match once a given step is reached.
+
+```c
+bool ts_query_is_pattern_guaranteed_at_step(const TSQuery *self, uint32_t byte_offset);
+```
+
+<ParamField path="self" type="const TSQuery *">
+  The query instance
+</ParamField>
+
+<ParamField path="byte_offset" type="uint32_t">
+  The byte offset of the step in the query's source
+</ParamField>
+
+**Returns:** `true` if the pattern is guaranteed to match.
+
+## Captures and strings
+
+### ts_query_capture_name_for_id
+
+Get the name and length of one of the query's captures.
+
+```c
+const char *ts_query_capture_name_for_id(
+  const TSQuery *self,
+  uint32_t index,
+  uint32_t *length
+);
+```
+
+<ParamField path="self" type="const TSQuery *">
+  The query instance
+</ParamField>
+
+<ParamField path="index" type="uint32_t">
+  The capture ID
+</ParamField>
+
+<ParamField path="length" type="uint32_t *">
+  Output parameter for the name length
+</ParamField>
+
+**Returns:** The capture name (do not free).
+
+Each capture is associated with a numeric id based on the order that it appeared in the query's source.
+
+### ts_query_capture_quantifier_for_id
+
+Get the quantifier of one of the query's captures.
+
+```c
+TSQuantifier ts_query_capture_quantifier_for_id(
+  const TSQuery *self,
+  uint32_t pattern_index,
+  uint32_t capture_index
+);
+```
+
+<ParamField path="self" type="const TSQuery *">
+  The query instance
+</ParamField>
+
+<ParamField path="pattern_index" type="uint32_t">
+  The pattern index
+</ParamField>
+
+<ParamField path="capture_index" type="uint32_t">
+  The capture index
+</ParamField>
+
+**Returns:** The quantifier: `TSQuantifierZero`, `TSQuantifierZeroOrOne`, `TSQuantifierZeroOrMore`, `TSQuantifierOne`, or `TSQuantifierOneOrMore`.
+
+### ts_query_string_value_for_id
+
+Get the string value for one of the query's string literals.
+
+```c
+const char *ts_query_string_value_for_id(
+  const TSQuery *self,
+  uint32_t index,
+  uint32_t *length
+);
+```
+
+<ParamField path="self" type="const TSQuery *">
+  The query instance
+</ParamField>
+
+<ParamField path="index" type="uint32_t">
+  The string ID
+</ParamField>
+
+<ParamField path="length" type="uint32_t *">
+  Output parameter for the string length
+</ParamField>
+
+**Returns:** The string value (do not free).
+
+## Disabling patterns and captures
+
+### ts_query_disable_capture
+
+Disable a certain capture within a query.
+
+```c
+void ts_query_disable_capture(TSQuery *self, const char *name, uint32_t length);
+```
+
+<ParamField path="self" type="TSQuery *">
+  The query instance
+</ParamField>
+
+<ParamField path="name" type="const char *">
+  The capture name to disable
+</ParamField>
+
+<ParamField path="length" type="uint32_t">
+  Length of the name
+</ParamField>
+
+This prevents the capture from being returned in matches, and also avoids any resource usage associated with recording the capture. Currently, there is no way to undo this.
+
+### ts_query_disable_pattern
+
+Disable a certain pattern within a query.
+
+```c
+void ts_query_disable_pattern(TSQuery *self, uint32_t pattern_index);
+```
+
+<ParamField path="self" type="TSQuery *">
+  The query instance
+</ParamField>
+
+<ParamField path="pattern_index" type="uint32_t">
+  The pattern index to disable
+</ParamField>
+
+This prevents the pattern from matching and removes most of the overhead associated with the pattern. Currently, there is no way to undo this.
+
+## Query cursors
+
+### ts_query_cursor_new
+
+Create a new cursor for executing a given query.
+
+```c
+TSQueryCursor *ts_query_cursor_new(void);
+```
+
+**Returns:** A new query cursor.
+
+The cursor stores the state needed to iteratively search for matches. To use the query cursor:
+
+1. Call `ts_query_cursor_exec` to start running a query on a syntax node
+2. Repeatedly call `ts_query_cursor_next_match` to iterate over matches, or call `ts_query_cursor_next_capture` to iterate over individual captures
+
+You can stop at any point and call `ts_query_cursor_exec` again to run another query.
+
+**Example:**
+```c
+TSQueryCursor *cursor = ts_query_cursor_new();
+ts_query_cursor_exec(cursor, query, root_node);
+
+TSQueryMatch match;
+while (ts_query_cursor_next_match(cursor, &match)) {
+  printf("Match found with %d captures\n", match.capture_count);
+}
+
+ts_query_cursor_delete(cursor);
+```
+
+### ts_query_cursor_delete
+
+Delete a query cursor, freeing all of the memory that it used.
+
+```c
+void ts_query_cursor_delete(TSQueryCursor *self);
+```
+
+<ParamField path="self" type="TSQueryCursor *">
+  The cursor to delete
+</ParamField>
+
+### ts_query_cursor_exec
+
+Start running a given query on a given node.
+
+```c
+void ts_query_cursor_exec(TSQueryCursor *self, const TSQuery *query, TSNode node);
+```
+
+<ParamField path="self" type="TSQueryCursor *">
+  The cursor instance
+</ParamField>
+
+<ParamField path="query" type="const TSQuery *">
+  The query to execute
+</ParamField>
+
+<ParamField path="node" type="TSNode">
+  The node to search within
+</ParamField>
+
+### ts_query_cursor_exec_with_options
+
+Start running a given query on a given node, with some options.
+
+```c
+void ts_query_cursor_exec_with_options(
+  TSQueryCursor *self,
+  const TSQuery *query,
+  TSNode node,
+  const TSQueryCursorOptions *query_options
+);
+```
+
+<ParamField path="self" type="TSQueryCursor *">
+  The cursor instance
+</ParamField>
+
+<ParamField path="query" type="const TSQuery *">
+  The query to execute
+</ParamField>
+
+<ParamField path="node" type="TSNode">
+  The node to search within
+</ParamField>
+
+<ParamField path="query_options" type="const TSQueryCursorOptions *">
+  Options with progress callback
+</ParamField>
+
+## Match limits
+
+### ts_query_cursor_did_exceed_match_limit
+
+Check if the query cursor exceeded its match limit.
+
+```c
+bool ts_query_cursor_did_exceed_match_limit(const TSQueryCursor *self);
+```
+
+<ParamField path="self" type="const TSQueryCursor *">
+  The cursor instance
+</ParamField>
+
+**Returns:** `true` if the match limit was exceeded.
+
+### ts_query_cursor_match_limit
+
+Get the current match limit.
+
+```c
+uint32_t ts_query_cursor_match_limit(const TSQueryCursor *self);
+```
+
+<ParamField path="self" type="const TSQueryCursor *">
+  The cursor instance
+</ParamField>
+
+**Returns:** The maximum number of in-progress matches allowed.
+
+### ts_query_cursor_set_match_limit
+
+Set the maximum number of in-progress matches allowed.
+
+```c
+void ts_query_cursor_set_match_limit(TSQueryCursor *self, uint32_t limit);
+```
+
+<ParamField path="self" type="TSQueryCursor *">
+  The cursor instance
+</ParamField>
+
+<ParamField path="limit" type="uint32_t">
+  The new match limit
+</ParamField>
+
+Query cursors have an optional maximum capacity for storing lists of in-progress captures. If this capacity is exceeded, the earliest-starting match will silently be dropped to make room for further matches. By default, query cursors allow any number of pending matches.
+
+## Range restrictions
+
+### ts_query_cursor_set_byte_range
+
+Set the range of bytes in which the query will be executed.
+
+```c
+bool ts_query_cursor_set_byte_range(TSQueryCursor *self, uint32_t start_byte, uint32_t end_byte);
+```
+
+<ParamField path="self" type="TSQueryCursor *">
+  The cursor instance
+</ParamField>
+
+<ParamField path="start_byte" type="uint32_t">
+  The start byte offset
+</ParamField>
+
+<ParamField path="end_byte" type="uint32_t">
+  The end byte offset
+</ParamField>
+
+**Returns:** `false` if start byte is greater than end byte, otherwise `true`.
+
+The query cursor will return matches that intersect with the given range. This means that a match may be returned even if some of its captures fall outside the specified range, as long as at least part of the match overlaps with the range.
+
+### ts_query_cursor_set_point_range
+
+Set the range of positions in which the query will be executed.
+
+```c
+bool ts_query_cursor_set_point_range(TSQueryCursor *self, TSPoint start_point, TSPoint end_point);
+```
+
+<ParamField path="self" type="TSQueryCursor *">
+  The cursor instance
+</ParamField>
+
+<ParamField path="start_point" type="TSPoint">
+  The start position
+</ParamField>
+
+<ParamField path="end_point" type="TSPoint">
+  The end position
+</ParamField>
+
+**Returns:** `false` if start point is greater than end point, otherwise `true`.
+
+### ts_query_cursor_set_containing_byte_range
+
+Set the byte range within which all matches must be fully contained.
+
+```c
+bool ts_query_cursor_set_containing_byte_range(TSQueryCursor *self, uint32_t start_byte, uint32_t end_byte);
+```
+
+<ParamField path="self" type="TSQueryCursor *">
+  The cursor instance
+</ParamField>
+
+<ParamField path="start_byte" type="uint32_t">
+  The start byte offset
+</ParamField>
+
+<ParamField path="end_byte" type="uint32_t">
+  The end byte offset
+</ParamField>
+
+**Returns:** `false` if start byte is greater than end byte, otherwise `true`.
+
+In contrast to `ts_query_cursor_set_byte_range`, this restricts the query cursor to only return matches where all nodes are fully contained within the given range. Both functions can be used together.
+
+### ts_query_cursor_set_containing_point_range
+
+Set the point range within which all matches must be fully contained.
+
+```c
+bool ts_query_cursor_set_containing_point_range(TSQueryCursor *self, TSPoint start_point, TSPoint end_point);
+```
+
+<ParamField path="self" type="TSQueryCursor *">
+  The cursor instance
+</ParamField>
+
+<ParamField path="start_point" type="TSPoint">
+  The start position
+</ParamField>
+
+<ParamField path="end_point" type="TSPoint">
+  The end position
+</ParamField>
+
+**Returns:** `false` if start point is greater than end point, otherwise `true`.
+
+## Iterating over results
+
+### ts_query_cursor_next_match
+
+Advance to the next match of the currently running query.
+
+```c
+bool ts_query_cursor_next_match(TSQueryCursor *self, TSQueryMatch *match);
+```
+
+<ParamField path="self" type="TSQueryCursor *">
+  The cursor instance
+</ParamField>
+
+<ParamField path="match" type="TSQueryMatch *">
+  Output parameter for the match
+</ParamField>
+
+**Returns:** `true` if there is a match, `false` otherwise.
+
+If there is a match, it is written to the `match` parameter. Each match contains the index of the pattern that matched, and an array of captures.
+
+### ts_query_cursor_remove_match
+
+Remove a match from the query cursor's list of matches.
+
+```c
+void ts_query_cursor_remove_match(TSQueryCursor *self, uint32_t match_id);
+```
+
+<ParamField path="self" type="TSQueryCursor *">
+  The cursor instance
+</ParamField>
+
+<ParamField path="match_id" type="uint32_t">
+  The ID of the match to remove
+</ParamField>
+
+### ts_query_cursor_next_capture
+
+Advance to the next capture of the currently running query.
+
+```c
+bool ts_query_cursor_next_capture(
+  TSQueryCursor *self,
+  TSQueryMatch *match,
+  uint32_t *capture_index
+);
+```
+
+<ParamField path="self" type="TSQueryCursor *">
+  The cursor instance
+</ParamField>
+
+<ParamField path="match" type="TSQueryMatch *">
+  Output parameter for the match containing the capture
+</ParamField>
+
+<ParamField path="capture_index" type="uint32_t *">
+  Output parameter for the capture's index within the match
+</ParamField>
+
+**Returns:** `true` if there is a capture, `false` otherwise.
+
+If there is a capture, its match is written to the `match` parameter and its index within the match's capture list is written to `capture_index`. This is useful if you don't care about which pattern matched, and just want a single ordered sequence of captures.
+
+### ts_query_cursor_set_max_start_depth
+
+Set the maximum start depth for a query cursor.
+
+```c
+void ts_query_cursor_set_max_start_depth(TSQueryCursor *self, uint32_t max_start_depth);
+```
+
+<ParamField path="self" type="TSQueryCursor *">
+  The cursor instance
+</ParamField>
+
+<ParamField path="max_start_depth" type="uint32_t">
+  The maximum depth, or `UINT32_MAX` to remove the limit
+</ParamField>
+
+This prevents cursors from exploring children nodes at a certain depth. Note that if a pattern includes many children, they will still be checked.
+
+The zero max start depth value can be used as a special behavior to destructure a subtree by staying on a node and using captures for interested parts. The zero max start depth only limits the search depth for a pattern's root node, but other nodes that are parts of the pattern may be searched at any depth as defined by the pattern structure.

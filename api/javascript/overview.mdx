@@ -1,0 +1,176 @@
+---
+title: JavaScript/Wasm API Overview
+description: Overview of the Tree-sitter JavaScript and WebAssembly bindings
+---
+
+The Tree-sitter JavaScript/Wasm bindings provide a way to use Tree-sitter in JavaScript environments, including browsers and Node.js. The library is compiled to WebAssembly for performance and portability.
+
+## Installation
+
+Install the `web-tree-sitter` package from npm:
+
+```bash
+npm install web-tree-sitter
+```
+
+For Deno:
+
+```typescript
+import { Parser } from "npm:web-tree-sitter";
+```
+
+## Basic Usage
+
+### Initialization
+
+Before creating a parser, you must initialize the library:
+
+```javascript
+import { Parser } from 'web-tree-sitter';
+
+await Parser.init();
+```
+
+With module options (e.g., for Next.js):
+
+```javascript
+await Parser.init({
+  locateFile(scriptName, scriptDirectory) {
+    return scriptName; // Adjust path as needed
+  },
+});
+```
+
+### Creating a Parser
+
+```javascript
+const parser = new Parser();
+```
+
+### Loading a Language
+
+```javascript
+import { Language } from 'web-tree-sitter';
+
+const JavaScript = await Language.load('/path/to/tree-sitter-javascript.wasm');
+parser.setLanguage(JavaScript);
+```
+
+### Parsing Code
+
+```javascript
+const sourceCode = 'let x = 1; console.log(x);';
+const tree = parser.parse(sourceCode);
+
+console.log(tree.rootNode.toString());
+// (program
+//   (lexical_declaration
+//     (variable_declarator (identifier) (number)))
+//   (expression_statement
+//     (call_expression
+//       (member_expression (identifier) (property_identifier))
+//       (arguments (identifier)))))
+```
+
+## Core Types
+
+### Point
+
+A position in a multi-line text document, in terms of rows and columns.
+
+```typescript
+interface Point {
+  row: number;    // Zero-based row number
+  column: number; // Zero-based column number
+}
+```
+
+### Range
+
+A range of positions in a multi-line text document.
+
+```typescript
+interface Range {
+  startPosition: Point;
+  endPosition: Point;
+  startIndex: number;
+  endIndex: number;
+}
+```
+
+### ParseCallback
+
+A callback function for parsing text from custom data structures:
+
+```typescript
+type ParseCallback = (index: number, position: Point) => string | undefined;
+```
+
+Example:
+
+```javascript
+const sourceLines = [
+  'let x = 1;',
+  'console.log(x);'
+];
+
+const tree = parser.parse((index, position) => {
+  let line = sourceLines[position.row];
+  if (line) return line.slice(position.column);
+});
+```
+
+## Main Classes
+
+The JavaScript/Wasm API consists of several main classes:
+
+- **[Parser](/api/javascript/parser)** - The main parsing interface
+- **[Tree](/api/javascript/tree)** - Represents a syntax tree
+- **[Node](/api/javascript/node)** - Represents a single node in the tree
+- **[Query](/api/javascript/query)** - Execute pattern queries on syntax trees
+- **Language** - Represents a grammar (loaded from `.wasm` files)
+- **Edit** - Represents an edit operation for incremental parsing
+
+## Version Compatibility
+
+The library exports version constants for checking language compatibility:
+
+```javascript
+import { LANGUAGE_VERSION, MIN_COMPATIBLE_VERSION } from 'web-tree-sitter';
+
+console.log('Current ABI version:', LANGUAGE_VERSION);
+console.log('Minimum compatible version:', MIN_COMPATIBLE_VERSION);
+```
+
+## Memory Management
+
+The JavaScript bindings use WebAssembly, which requires explicit memory management for some objects:
+
+```javascript
+// Create objects
+const parser = new Parser();
+const tree = parser.parse(sourceCode);
+const query = new Query(language, queryString);
+
+// Clean up when done
+parser.delete();
+tree.delete();
+query.delete();
+```
+
+The library uses `FinalizationRegistry` when available to automatically clean up resources, but explicitly calling `delete()` is recommended for better control over memory usage.
+
+## Browser vs Node.js
+
+The library works in both browsers and Node.js. However, note that:
+
+- In Node.js, native bindings (`node-tree-sitter`) are generally faster
+- In browsers, you may need to configure your bundler to handle the `.wasm` files
+- WASM files must be served with the correct MIME type (`application/wasm`)
+
+## Next Steps
+
+- Learn about the [Parser class](/api/javascript/parser)
+- Explore [Tree operations](/api/javascript/tree)
+- Understand [Node traversal](/api/javascript/node)
+- Execute [pattern queries](/api/javascript/query)

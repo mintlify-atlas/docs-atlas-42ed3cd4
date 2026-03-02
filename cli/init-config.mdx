@@ -1,0 +1,146 @@
+---
+title: init-config
+description: Initialize a configuration file for the Tree-sitter CLI
+---
+
+This command initializes a configuration file for the Tree-sitter CLI.
+
+```bash
+tree-sitter init-config
+```
+
+## Configuration File Location
+
+The configuration file is created in the "default" location for your platform:
+
+- **Unix**: `$XDG_CONFIG_HOME/tree-sitter/config.json` or `$HOME/.config/tree-sitter/config.json`
+- **Windows**: `%APPDATA%\tree-sitter\config.json` or `$HOME\AppData\Roaming\tree-sitter\config.json`
+
+<Info>
+  The CLI will work without a config file, falling back on default values for each configuration option.
+</Info>
+
+When you run the command, it will print the location of the created file so you can easily find and modify it.
+
+## Configuration Options
+
+The configuration file is a JSON file with the following fields:
+
+### parser-directories
+
+Specifies where to look for Tree-sitter grammars on your filesystem. The [`tree-sitter highlight`](/cli/highlight) command uses this to automatically determine which language to use.
+
+```json
+{
+  "parser-directories": [
+    "/Users/my-name/code",
+    "~/other-code",
+    "$HOME/another-code"
+  ]
+}
+```
+
+Any folder within these directories whose name begins with `tree-sitter-` will be treated as a Tree-sitter grammar repository.
+
+### theme
+
+Defines colors for syntax highlighting. The [Tree-sitter highlighting system](https://tree-sitter.github.io/tree-sitter/syntax-highlighting) annotates code with logical "highlight names" like `function.method`, `type.builtin`, `keyword`, etc.
+
+The `theme` value is an object whose keys are dot-separated highlight names and values are styling parameters.
+
+#### Highlight Names
+
+A theme can contain multiple keys that share a common subsequence:
+
+- `variable` and `variable.parameter`
+- `function`, `function.builtin`, and `function.method`
+
+Styling is determined based on the **longest matching theme key**. For example, `function.builtin.static` would match `function.builtin` rather than `function`.
+
+#### Styling Values
+
+Values can be:
+
+- **Integers** from 0 to 255 (ANSI terminal color IDs)
+- **Hex strings** like `"#e45649"` (RGB colors)
+- **Color names** like `"red"`, `"black"`, `"purple"`, `"cyan"`
+- **Objects** with keys:
+  - `color` - Integer or string as above
+  - `underline` - Boolean
+  - `italic` - Boolean
+  - `bold` - Boolean
+
+#### Example Theme
+
+```json
+{
+  "theme": {
+    "function": 26,
+    "operator": {
+      "bold": true,
+      "color": 239
+    },
+    "variable.builtin": {
+      "bold": true
+    },
+    "variable.parameter": {
+      "underline": true
+    },
+    "type.builtin": {
+      "color": 23,
+      "bold": true
+    },
+    "keyword": 56,
+    "type": 23,
+    "number": {
+      "bold": true,
+      "color": 94
+    },
+    "constant": 94,
+    "attribute": {
+      "color": 124,
+      "italic": true
+    },
+    "comment": {
+      "color": 245,
+      "italic": true
+    },
+    "constant.builtin": {
+      "color": 94,
+      "bold": true
+    }
+  }
+}
+```
+
+### parse-theme
+
+Controls colors for the pretty-printed CST output from [`tree-sitter parse`](/cli/parse) with the `-c/--cst` option.
+
+<Note>
+  Omitting a field will cause the relevant text to be rendered with its default color.
+</Note>
+
+Colors are specified as RGB arrays `[r, g, b]` with values 0-255.
+
+```json
+{
+  "parse-theme": {
+    "node-kind": [20, 20, 20],
+    "node-text": [255, 255, 255],
+    "field": [42, 42, 42],
+    "row-color": [255, 255, 255],
+    "row-color-named": [255, 130, 0],
+    "extra": [255, 0, 255],
+    "error": [255, 0, 0],
+    "missing": [153, 75, 0],
+    "line-feed": [150, 150, 150],
+    "backtick": [0, 200, 0],
+    "literal": [0, 0, 200]
+  }
+}
+```
+
+## Modifying the Config
+
+After creating the config file, you can edit it manually with any text editor. The CLI will automatically use the updated settings.

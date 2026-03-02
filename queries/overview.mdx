@@ -1,0 +1,89 @@
+---
+title: Pattern Matching with Queries
+description: Learn how to use Tree-sitter's query language to find and match specific patterns in source code
+---
+
+Code analysis often requires finding specific patterns in source code. Tree-sitter provides a simple pattern-matching language for this purpose, similar to what's used in its unit test system. This allows you to express and search for code structures without writing complex parsing logic.
+
+## What are Queries?
+
+A **query** consists of one or more **patterns**, where each pattern is an [S-expression](https://en.wikipedia.org/wiki/S-expression) that matches a certain set of nodes in a syntax tree. Queries enable you to:
+
+- Find specific code patterns across large codebases
+- Extract information from syntax trees
+- Power features like syntax highlighting, code navigation, and refactoring
+- Identify code smells or potential bugs
+
+<Note>
+Queries are used extensively in Tree-sitter's unit testing system, making them a battle-tested tool for pattern matching.
+</Note>
+
+## Basic Query Structure
+
+The expression to match a given node consists of a pair of parentheses containing:
+1. The node's type
+2. Optionally, a series of other S-expressions that match the node's children
+
+For example, this pattern matches any `binary_expression` node whose children are both `number_literal` nodes:
+
+```query
+(binary_expression (number_literal) (number_literal))
+```
+
+## Query Components
+
+Tree-sitter queries support several powerful features:
+
+<CardGroup cols={2}>
+  <Card title="Syntax" icon="code" href="/queries/syntax">
+    Learn the basic syntax for writing patterns, including fields, anonymous nodes, and special nodes
+  </Card>
+  <Card title="Operators" icon="function" href="/queries/operators">
+    Discover operators for capturing nodes, quantification, grouping, and anchoring
+  </Card>
+  <Card title="Predicates" icon="filter" href="/queries/predicates">
+    Add conditions and metadata to patterns using predicates and directives
+  </Card>
+  <Card title="API Reference" icon="book" href="/queries/api">
+    Reference for the C API to create and execute queries programmatically
+  </Card>
+</CardGroup>
+
+## Use Cases
+
+Queries are the foundation for many Tree-sitter-powered features:
+
+- **Syntax Highlighting**: Match language constructs to apply appropriate colors
+- **Code Navigation**: Find definitions, references, and symbols
+- **Refactoring**: Identify and transform code patterns
+- **Linting**: Detect problematic code patterns
+- **Code Search**: Find complex structural patterns beyond text search
+
+## Getting Started
+
+To start writing queries, you'll need:
+
+1. A Tree-sitter parser for your target language
+2. Understanding of the grammar's node types and structure
+3. Knowledge of query syntax and operators
+
+<Tip>
+Use Tree-sitter's playground at [tree-sitter.github.io/tree-sitter/playground](https://tree-sitter.github.io/tree-sitter/playground) to explore syntax trees and test queries interactively.
+</Tip>
+
+## Next Steps
+
+<Steps>
+  <Step title="Learn Query Syntax">
+    Start with the [Query Syntax](/queries/syntax) page to understand how to write basic patterns
+  </Step>
+  <Step title="Master Operators">
+    Explore [Query Operators](/queries/operators) to capture nodes and create complex patterns
+  </Step>
+  <Step title="Add Conditions">
+    Use [Predicates](/queries/predicates) to filter matches and add metadata
+  </Step>
+  <Step title="Integrate Queries">
+    Reference the [Query API](/queries/api) to execute queries in your application
+  </Step>
+</Steps>

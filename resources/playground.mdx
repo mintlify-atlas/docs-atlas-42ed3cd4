@@ -1,0 +1,116 @@
+---
+title: Web Playground
+description: Interactive web playground for testing Tree-sitter parsers
+---
+
+The Tree-sitter web playground is an interactive tool that allows you to experiment with Tree-sitter parsers directly in your browser.
+
+## Online Playground
+
+You can access the online playground at:
+
+<Card title="Tree-sitter Playground" icon="play" href="https://tree-sitter.github.io/tree-sitter/playground">
+  Try Tree-sitter with pre-selected grammars in your browser
+</Card>
+
+## Features
+
+The playground provides several powerful features for exploring how Tree-sitter parsers work:
+
+### Syntax Tree Visualization
+
+The syntax tree updates in real-time as you type in the code editor. As you move around the code, the current node is highlighted in the tree. You can also click any node in the tree to select the corresponding part of the code.
+
+### Query Testing
+
+You can enter one or more [query patterns](/using-parsers/queries) into the Query panel. If the query is valid, its captures will be highlighted both in the Code and in the Query panels.
+
+<Note>
+To see any query results, you must use at least one capture, like `(node_name) @capture-name`
+</Note>
+
+If the query is invalid, the problematic parts will be underlined, and detailed diagnostics will be available on hover.
+
+### Supported Languages
+
+The online playground includes pre-selected grammars for:
+
+<CardGroup cols={3}>
+  <Card title="Bash" icon="terminal" />
+  <Card title="C" icon="c" />
+  <Card title="C++" icon="code" />
+  <Card title="C#" icon="code" />
+  <Card title="Go" icon="golang" />
+  <Card title="HTML" icon="html5" />
+  <Card title="Java" icon="java" />
+  <Card title="JavaScript" icon="js" />
+  <Card title="PHP" icon="php" />
+  <Card title="Python" icon="python" />
+  <Card title="Ruby" icon="gem" />
+  <Card title="Rust" icon="rust" />
+  <Card title="TOML" icon="file-code" />
+  <Card title="TypeScript" icon="js" />
+  <Card title="YAML" icon="file-code" />
+</CardGroup>
+
+### Display Options
+
+The playground provides several display options:
+
+- **Log**: Enable logging (visible in the browser's console)
+- **Show anonymous nodes**: Display anonymous nodes in the syntax tree
+- **Query**: Toggle the query panel
+- **Accessibility**: Enable accessibility features
+
+## Local Playground
+
+You can also run the playground locally with your own grammar using the [CLI](/cli/playground)'s `tree-sitter playground` command:
+
+```sh
+tree-sitter playground
+```
+
+This allows you to test your custom parsers during development.
+
+### Building Wasm for Offline Use
+
+If you want the local playground to work offline, you need to build the Wasm library first:
+
+```sh
+cd lib/binding_web
+npm install
+npm run build
+```
+
+If you skip this step, the `tree-sitter playground` command will require an internet connection.
+
+## How It Works
+
+The playground is built with:
+
+- **[CodeMirror](https://codemirror.net)**: The code editor
+- **[web-tree-sitter](https://www.npmjs.com/package/web-tree-sitter)**: The Wasm-based JavaScript binding
+- **Pre-compiled Wasm parsers**: Available from the [tree-sitter.github.io repo](https://github.com/tree-sitter/tree-sitter.github.io)
+
+## Contributing to the Playground
+
+If you'd like to improve the playground, the source code can be found in the Tree-sitter repository:
+
+- JavaScript: [`docs/src/assets/js/playground.js`](https://github.com/tree-sitter/tree-sitter/blob/master/docs/src/assets/js/playground.js)
+- CSS: [`docs/src/assets/css/playground.css`](https://github.com/tree-sitter/tree-sitter/blob/master/docs/src/assets/css/playground.css)
+
+See the [Contributing guide](/resources/contributing) for more information on how to get started.
+
+## Tips for Using the Playground
+
+<Tip>
+Copy the syntax tree to your clipboard using the copy button next to the "Tree" heading.
+</Tip>
+
+<Tip>
+Use the playground to learn query syntax by experimenting with different patterns and seeing how they match nodes in real-time.
+</Tip>
+
+<Tip>
+The update time (shown below the tree) helps you understand the performance characteristics of the parser.
+</Tip>

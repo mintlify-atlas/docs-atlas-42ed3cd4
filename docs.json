@@ -1,122 +1,164 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "Tree-sitter",
+  "theme": "aspen",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#2D7A3E",
+    "light": "#4CAF50",
+    "dark": "#1B5E20"
   },
-  "favicon": "/favicon.svg",
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/tree-sitter/tree-sitter"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/tree-sitter/tree-sitter"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
-              "quickstart",
-              "development"
+              "introduction",
+              "installation",
+              "quickstart"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Using Parsers",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "using-parsers/overview",
+              "using-parsers/basic-parsing",
+              "using-parsers/advanced-parsing",
+              "using-parsers/walking-trees",
+              "using-parsers/pattern-matching",
+              "using-parsers/static-node-types",
+              "using-parsers/abi-versions"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Queries",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "queries/overview",
+              "queries/syntax",
+              "queries/operators",
+              "queries/predicates",
+              "queries/api"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Creating Parsers",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "creating-parsers/overview",
+              "creating-parsers/getting-started",
+              "creating-parsers/grammar-dsl",
+              "creating-parsers/writing-grammar",
+              "creating-parsers/external-scanners",
+              "creating-parsers/testing",
+              "creating-parsers/publishing"
+            ]
+          },
+          {
+            "group": "Advanced Topics",
+            "pages": [
+              "advanced/syntax-highlighting",
+              "advanced/code-navigation",
+              "advanced/implementation",
+              "advanced/performance"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Core Library",
             "pages": [
-              "api-reference/introduction"
+              "api/c-api/overview",
+              "api/c-api/parser",
+              "api/c-api/tree",
+              "api/c-api/node",
+              "api/c-api/query",
+              "api/c-api/language"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Rust Bindings",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/rust/overview",
+              "api/rust/parser",
+              "api/rust/tree",
+              "api/rust/node",
+              "api/rust/query",
+              "api/rust/language",
+              "api/rust/wasm"
+            ]
+          },
+          {
+            "group": "JavaScript/Wasm",
+            "pages": [
+              "api/javascript/overview",
+              "api/javascript/parser",
+              "api/javascript/tree",
+              "api/javascript/node",
+              "api/javascript/query"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "CLI Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "cli/overview",
+              "cli/installation"
+            ]
+          },
+          {
+            "group": "Commands",
+            "pages": [
+              "cli/init-config",
+              "cli/init",
+              "cli/generate",
+              "cli/build",
+              "cli/parse",
+              "cli/test",
+              "cli/query",
+              "cli/highlight",
+              "cli/tags",
+              "cli/playground",
+              "cli/fuzz",
+              "cli/dump-languages",
+              "cli/complete",
+              "cli/version"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Resources",
+        "groups": [
+          {
+            "group": "Community",
+            "pages": [
+              "resources/contributing",
+              "resources/playground",
+              "resources/community",
+              "resources/parsers"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

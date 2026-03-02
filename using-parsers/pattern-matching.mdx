@@ -1,0 +1,521 @@
+---
+title: Pattern Matching with Queries
+description: Search and match code patterns using Tree-sitter's query language
+---
+
+## Introduction
+
+Code analysis often requires finding specific patterns in source code. Tree-sitter provides a simple yet powerful pattern-matching language for this purpose, similar to what's used in its [unit test system](/creating-parsers/writing-tests).
+
+This allows you to express and search for code structures without writing complex parsing logic.
+
+## Creating a Query
+
+Create a query by specifying a string containing one or more patterns:
+
+```c
+TSQuery *ts_query_new(
+  const TSLanguage *language,
+  const char *source,
+  uint32_t source_len,
+  uint32_t *error_offset,
+  TSQueryError *error_type
+);
+```
+
+<ParamField path="language" type="const TSLanguage*" required>
+  The language that the query is for
+</ParamField>
+
+<ParamField path="source" type="const char*" required>
+  A string containing one or more S-expression patterns
+</ParamField>
+
+<ParamField path="source_len" type="uint32_t" required>
+  The length of the source string in bytes
+</ParamField>
+
+<ParamField path="error_offset" type="uint32_t*">
+  If there's an error, this will be set to the byte offset of the error
+</ParamField>
+
+<ParamField path="error_type" type="TSQueryError*">
+  If there's an error, this will be set to the error type
+</ParamField>
+
+### Error Types
+
+```c
+typedef enum {
+  TSQueryErrorNone = 0,
+  TSQueryErrorSyntax,
+  TSQueryErrorNodeType,
+  TSQueryErrorField,
+  TSQueryErrorCapture,
+  TSQueryErrorStructure,
+  TSQueryErrorLanguage,
+} TSQueryError;
+```
+
+<CodeGroup>
+```c C
+#include <tree_sitter/api.h>
+
+const TSLanguage *tree_sitter_javascript(void);
+
+int main() {
+  const TSLanguage *language = tree_sitter_javascript();
+  
+  uint32_t error_offset;
+  TSQueryError error_type;
+  
+  TSQuery *query = ts_query_new(
+    language,
+    "(function_declaration name: (identifier) @fn-name)",
+    strlen("(function_declaration name: (identifier) @fn-name)"),
+    &error_offset,
+    &error_type
+  );
+  
+  if (!query) {
+    fprintf(stderr, "Error at offset %u: %d\n", error_offset, error_type);
+    return 1;
+  }
+  
+  // Use the query...
+  
+  ts_query_delete(query);
+  return 0;
+}
+```
+
+```rust Rust
+use tree_sitter::{Query, Language};
+
+let language = tree_sitter_javascript::language();
+
+let query = Query::new(
+    &language,
+    "(function_declaration name: (identifier) @fn-name)",
+).expect("Error creating query");
+
+// Use the query...
+```
+
+```javascript JavaScript
+const Parser = require('tree-sitter');
+const JavaScript = require('tree-sitter-javascript');
+
+const query = new Parser.Query(
+  JavaScript,
+  '(function_declaration name: (identifier) @fn-name)'
+);
+
+// Use the query...
+```
+</CodeGroup>
+
+## Query Syntax Basics
+
+Queries are written using S-expressions that match the structure of syntax trees:
+
+### Simple Pattern
+
+```scheme
+(function_declaration)
+```
+
+Matches all function declarations.
+
+### Pattern with Fields
+
+```scheme
+(function_declaration
+  name: (identifier) @function-name
+  body: (statement_block) @function-body)
+```
+
+Matches function declarations and captures the name and body with labels.
+
+### Pattern with Predicates
+
+```scheme
+((identifier) @constant
+ (#match? @constant "^[A-Z_]+$"))
+```
+
+Matches identifiers that look like constants (all uppercase).
+
+## Executing Queries
+
+### Creating a Query Cursor
+
+The `TSQuery` value is immutable and can be safely shared between threads. To execute the query, create a `TSQueryCursor`, which carries the state needed for processing:
+
+```c
+TSQueryCursor *ts_query_cursor_new(void);
+```
+
+<Tip>
+  The query cursor should not be shared between threads, but can be reused for many query executions.
+</Tip>
+
+### Executing the Query
+
+Execute the query on a given syntax node:
+
+```c
+void ts_query_cursor_exec(TSQueryCursor *, const TSQuery *, TSNode);
+```
+
+### Iterating Over Matches
+
+```c
+typedef struct {
+  TSNode node;
+  uint32_t index;
+} TSQueryCapture;
+
+typedef struct {
+  uint32_t id;
+  uint16_t pattern_index;
+  uint16_t capture_count;
+  const TSQueryCapture *captures;
+} TSQueryMatch;
+
+bool ts_query_cursor_next_match(TSQueryCursor *, TSQueryMatch *match);
+```
+
+This function returns `false` when there are no more matches. Otherwise, it populates the `match` with data about which pattern matched and which nodes were captured.
+
+## Complete Example
+
+<CodeGroup>
+```c C
+#include <stdio.h>
+#include <string.h>
+#include <tree_sitter/api.h>
+
+const TSLanguage *tree_sitter_javascript(void);
+
+int main() {
+  // Setup parser
+  TSParser *parser = ts_parser_new();
+  ts_parser_set_language(parser, tree_sitter_javascript());
+  
+  // Parse code
+  const char *source_code = "function one() { two(); function three() {} }";
+  TSTree *tree = ts_parser_parse_string(
+    parser, NULL, source_code, strlen(source_code)
+  );
+  
+  // Create query
+  const char *query_string = 
+    "(function_declaration name: (identifier) @fn-def)\n"
+    "(call_expression function: (identifier) @fn-ref)";
+  
+  uint32_t error_offset;
+  TSQueryError error_type;
+  TSQuery *query = ts_query_new(
+    tree_sitter_javascript(),
+    query_string,
+    strlen(query_string),
+    &error_offset,
+    &error_type
+  );
+  
+  // Execute query
+  TSQueryCursor *cursor = ts_query_cursor_new();
+  ts_query_cursor_exec(cursor, query, ts_tree_root_node(tree));
+  
+  // Iterate matches
+  TSQueryMatch match;
+  while (ts_query_cursor_next_match(cursor, &match)) {
+    printf("Match pattern %d:\n", match.pattern_index);
+    
+    for (uint32_t i = 0; i < match.capture_count; i++) {
+      TSQueryCapture capture = match.captures[i];
+      uint32_t length;
+      const char *name = ts_query_capture_name_for_id(
+        query, capture.index, &length
+      );
+      
+      uint32_t start = ts_node_start_byte(capture.node);
+      uint32_t end = ts_node_end_byte(capture.node);
+      
+      printf("  @%.*s: %.*s\n",
+             length, name,
+             end - start, source_code + start);
+    }
+  }
+  
+  // Cleanup
+  ts_query_cursor_delete(cursor);
+  ts_query_delete(query);
+  ts_tree_delete(tree);
+  ts_parser_delete(parser);
+  return 0;
+}
+```
+
+```rust Rust
+use tree_sitter::{Parser, Query, QueryCursor};
+
+let mut parser = Parser::new();
+parser.set_language(&tree_sitter_javascript::language()).unwrap();
+
+// Parse code
+let source_code = "function one() { two(); function three() {} }";
+let tree = parser.parse(source_code, None).unwrap();
+
+// Create query
+let query = Query::new(
+    &tree_sitter_javascript::language(),
+    r#"
+    (function_declaration name: (identifier) @fn-def)
+    (call_expression function: (identifier) @fn-ref)
+    "#,
+).unwrap();
+
+// Execute query
+let mut cursor = QueryCursor::new();
+let matches = cursor.matches(&query, tree.root_node(), source_code.as_bytes());
+
+// Iterate matches
+for match_ in matches {
+    println!("Match pattern {}:", match_.pattern_index);
+    
+    for capture in match_.captures {
+        let capture_name = &query.capture_names()[capture.index as usize];
+        let text = &source_code[capture.node.byte_range()];
+        
+        println!("  @{}: {}", capture_name, text);
+    }
+}
+```
+
+```javascript JavaScript
+const Parser = require('tree-sitter');
+const JavaScript = require('tree-sitter-javascript');
+
+const parser = new Parser();
+parser.setLanguage(JavaScript);
+
+// Parse code
+const sourceCode = 'function one() { two(); function three() {} }';
+const tree = parser.parse(sourceCode);
+
+// Create and execute query
+const query = new Parser.Query(
+  JavaScript,
+  `
+  (function_declaration name: (identifier) @fn-def)
+  (call_expression function: (identifier) @fn-ref)
+  `
+);
+
+const matches = query.matches(tree.rootNode);
+
+// Iterate matches
+for (const match of matches) {
+  console.log(`Match pattern ${match.pattern}:`);
+  
+  for (const capture of match.captures) {
+    const text = sourceCode.substring(
+      capture.node.startIndex,
+      capture.node.endIndex
+    );
+    console.log(`  @${capture.name}: ${text}`);
+  }
+}
+```
+</CodeGroup>
+
+## Iterating Over Captures
+
+Instead of iterating over complete matches, you can iterate over individual captures in order:
+
+```c
+bool ts_query_cursor_next_capture(
+  TSQueryCursor *self,
+  TSQueryMatch *match,
+  uint32_t *capture_index
+);
+```
+
+This is useful when you don't care about which pattern matched and just want a single ordered sequence of captures.
+
+<CodeGroup>
+```c C
+TSQueryMatch match;
+uint32_t capture_index;
+
+while (ts_query_cursor_next_capture(cursor, &match, &capture_index)) {
+  TSQueryCapture capture = match.captures[capture_index];
+  uint32_t length;
+  const char *name = ts_query_capture_name_for_id(
+    query, capture.index, &length
+  );
+  
+  printf("Capture @%.*s\n", length, name);
+}
+```
+
+```rust Rust
+let mut cursor = QueryCursor::new();
+let captures = cursor.captures(&query, tree.root_node(), source_code.as_bytes());
+
+for (match_, capture_index) in captures {
+    let capture = &match_.captures[capture_index];
+    let capture_name = &query.capture_names()[capture.index as usize];
+    
+    println!("Capture @{}", capture_name);
+}
+```
+
+```javascript JavaScript
+const captures = query.captures(tree.rootNode);
+
+for (const capture of captures) {
+  console.log(`Capture @${capture.name}`);
+}
+```
+</CodeGroup>
+
+## Setting Query Ranges
+
+You can limit the range in which queries execute:
+
+```c
+bool ts_query_cursor_set_byte_range(
+  TSQueryCursor *self,
+  uint32_t start_byte,
+  uint32_t end_byte
+);
+
+bool ts_query_cursor_set_point_range(
+  TSQueryCursor *self,
+  TSPoint start_point,
+  TSPoint end_point
+);
+```
+
+<CodeGroup>
+```c C
+// Only search within bytes 100-500
+ts_query_cursor_set_byte_range(cursor, 100, 500);
+ts_query_cursor_exec(cursor, query, ts_tree_root_node(tree));
+```
+
+```rust Rust
+// Only search within specific point range
+cursor.set_point_range(std::ops::Range {
+    start: Point { row: 10, column: 0 },
+    end: Point { row: 20, column: 0 },
+});
+```
+
+```javascript JavaScript
+// Search in specific range
+const matches = query.matches(
+  tree.rootNode,
+  {
+    startPosition: { row: 10, column: 0 },
+    endPosition: { row: 20, column: 0 }
+  }
+);
+```
+</CodeGroup>
+
+<Note>
+  The query cursor will return matches that **intersect** with the given range. A match may be returned even if some of its captures fall outside the specified range, as long as at least part of the match overlaps with the range.
+</Note>
+
+## Query Properties and Predicates
+
+Queries support predicates for filtering matches:
+
+### Text Predicates
+
+```scheme
+; Match identifiers equal to "foo"
+((identifier) @id (#eq? @id "foo"))
+
+; Match identifiers matching a regex
+((identifier) @const (#match? @const "^[A-Z_]+$"))
+
+; Match identifiers NOT equal to "bar"
+((identifier) @id (#not-eq? @id "bar"))
+```
+
+### Property Settings
+
+```scheme
+; Set properties on matches
+((comment) @comment.documentation
+ (#match? @comment.documentation "^///"))
+```
+
+### Getting Predicate Information
+
+```c
+const TSQueryPredicateStep *ts_query_predicates_for_pattern(
+  const TSQuery *self,
+  uint32_t pattern_index,
+  uint32_t *step_count
+);
+```
+
+## Advanced Query Features
+
+### Query Introspection
+
+```c
+// Get counts
+uint32_t ts_query_pattern_count(const TSQuery *self);
+uint32_t ts_query_capture_count(const TSQuery *self);
+uint32_t ts_query_string_count(const TSQuery *self);
+
+// Get pattern info
+uint32_t ts_query_start_byte_for_pattern(const TSQuery *self, uint32_t pattern_index);
+uint32_t ts_query_end_byte_for_pattern(const TSQuery *self, uint32_t pattern_index);
+
+// Check pattern properties
+bool ts_query_is_pattern_rooted(const TSQuery *self, uint32_t pattern_index);
+bool ts_query_is_pattern_non_local(const TSQuery *self, uint32_t pattern_index);
+```
+
+### Disabling Patterns and Captures
+
+```c
+void ts_query_disable_capture(TSQuery *self, const char *name, uint32_t length);
+void ts_query_disable_pattern(TSQuery *self, uint32_t pattern_index);
+```
+
+This prevents patterns or captures from matching and reduces resource usage.
+
+### Match Limits
+
+```c
+void ts_query_cursor_set_match_limit(TSQueryCursor *self, uint32_t limit);
+uint32_t ts_query_cursor_match_limit(const TSQueryCursor *self);
+bool ts_query_cursor_did_exceed_match_limit(const TSQueryCursor *self);
+```
+
+Set a maximum number of in-progress matches to prevent excessive memory usage.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Query Syntax" icon="code" href="/using-parsers/queries/syntax">
+    Learn the complete query syntax
+  </Card>
+  
+  <Card title="Query Predicates" icon="filter" href="/using-parsers/queries/predicates-and-directives">
+    Master predicates and directives
+  </Card>
+  
+  <Card title="Static Node Types" icon="file-code" href="/using-parsers/static-node-types">
+    Generate type information for queries
+  </Card>
+</CardGroup>

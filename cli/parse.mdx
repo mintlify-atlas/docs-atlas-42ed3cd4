@@ -1,0 +1,229 @@
+---
+title: parse
+description: Parse source files using a Tree-sitter parser
+---
+
+The `parse` command parses source files using a Tree-sitter parser. You can pass any number of file paths and glob patterns, or read from stdin if no paths are provided.
+
+```bash
+tree-sitter parse [OPTIONS] [PATHS]...
+```
+
+**Aliases:** `p`
+
+The command will exit with a non-zero status code if any parse errors occurred.
+
+## Input Sources
+
+### File Paths
+
+Pass file paths or glob patterns directly:
+
+```bash
+tree-sitter parse file1.js file2.js
+tree-sitter parse src/**/*.js
+```
+
+### Paths File
+
+Use `--paths` to provide a file containing paths:
+
+```bash
+tree-sitter parse --paths file-list.txt
+```
+
+### Standard Input
+
+If no paths are provided, input is read from stdin:
+
+```bash
+echo "console.log('hello')" | tree-sitter parse
+```
+
+## Output Formats
+
+### Default (S-Expression)
+
+By default, outputs the parse tree as an S-expression:
+
+```bash
+tree-sitter parse example.js
+```
+
+### CST Format
+
+Pretty-printed concrete syntax tree:
+
+```bash
+tree-sitter parse --cst example.js
+```
+
+### XML Format
+
+```bash
+tree-sitter parse --xml example.js
+```
+
+### Graphviz Dot
+
+```bash
+tree-sitter parse --dot example.js | dot -Tpng > tree.png
+```
+
+### JSON Summary
+
+```bash
+tree-sitter parse --json-summary example.js
+```
+
+## Options
+
+### Input Options
+
+<ParamField path="--paths" type="file">
+  The path to a file that contains paths to source files to parse.
+</ParamField>
+
+<ParamField path="-p, --grammar-path" type="path">
+  The path to the directory containing the grammar. Implies `--rebuild`.
+</ParamField>
+
+<ParamField path="-l, --lib-path" type="path">
+  The path to the parser's dynamic library. Used instead of the cached or automatically generated library.
+</ParamField>
+
+<ParamField path="--lang-name" type="string">
+  If `--lib-path` is used, the name of the language used to extract the library's language function.
+</ParamField>
+
+<ParamField path="--scope" type="scope">
+  The language scope to use for parsing. Useful when the language is ambiguous.
+</ParamField>
+
+<ParamField path="--encoding" type="encoding">
+  Set the encoding of the input file. One of `utf8`, `utf16-le`, `utf16-be`.
+  
+  By default, the CLI looks for a [BOM](https://en.wikipedia.org/wiki/Byte_order_mark) to determine if the file is UTF-16BE or UTF-16LE. If no BOM is present, UTF-8 is assumed.
+</ParamField>
+
+<ParamField path="-n, --test-number" type="number">
+  Parse a specific test in the corpus. The test number matches the output of `tree-sitter test`.
+</ParamField>
+
+### Output Options
+
+<ParamField path="--dot" type="flag">
+  Output the parse tree with [graphviz dot](https://graphviz.org/doc/info/lang.html).
+</ParamField>
+
+<ParamField path="-x, --xml" type="flag">
+  Output the parse tree in XML format.
+</ParamField>
+
+<ParamField path="-c, --cst" type="flag">
+  Output the parse tree in a pretty-printed CST format.
+</ParamField>
+
+<ParamField path="-j, --json-summary" type="flag">
+  Output parsing results in a JSON format.
+</ParamField>
+
+<ParamField path="-q, --quiet" type="flag">
+  Suppress main output.
+</ParamField>
+
+<ParamField path="--no-ranges" type="flag">
+  Omit the node's ranges from the default parse output. Useful when copying S-Expressions to a test file.
+</ParamField>
+
+### Debug Options
+
+<ParamField path="-d, --debug" type="flag | type">
+  Output parsing and lexing logs to stderr. Can optionally specify a debug type.
+</ParamField>
+
+<ParamField path="-D, --debug-graph" type="flag">
+  Output logs of the graphs of the stack and parse trees during parsing. Graphs are constructed with [graphviz dot](https://graphviz.org/doc/info/lang.html), and output is written to `log.html`.
+</ParamField>
+
+<ParamField path="--open-log" type="flag">
+  When using `--debug-graph`, open the log file in the default browser.
+</ParamField>
+
+<ParamField path="-0, --debug-build" type="flag">
+  Compile the parser with debug flags enabled. Useful when debugging with `gdb` or `lldb`.
+</ParamField>
+
+### Performance Options
+
+<ParamField path="-s, --stat" type="flag">
+  Show parsing statistics.
+</ParamField>
+
+<ParamField path="-t, --time" type="flag">
+  Print the time taken to parse the file. If edits are provided, also prints time after each edit.
+</ParamField>
+
+<ParamField path="--timeout" type="microseconds">
+  Set the timeout for parsing a single file, in microseconds.
+</ParamField>
+
+### Edit Options
+
+<ParamField path="--edits" type="edit">
+  Apply edits after parsing the file. Edits are in the format: `row,col|position delcount insert_text` where row, col, and position are 0-indexed.
+  
+  Can be supplied multiple times.
+</ParamField>
+
+### Build Options
+
+<ParamField path="--wasm" type="flag">
+  Compile and run the parser as a Wasm module (only if the CLI was built with `--features=wasm`).
+</ParamField>
+
+<ParamField path="-r, --rebuild" type="flag">
+  Force a rebuild of the parser before parsing.
+</ParamField>
+
+<ParamField path="--config-path" type="path">
+  The path to an alternative configuration (`config.json`) file. See [init-config](/cli/init-config).
+</ParamField>
+
+## Examples
+
+### Parse a Single File
+
+```bash
+tree-sitter parse example.js
+```
+
+### Parse Multiple Files with Statistics
+
+```bash
+tree-sitter parse --stat src/*.js
+```
+
+### Parse with Debug Output
+
+```bash
+tree-sitter parse --debug-graph --open-log example.js
+```
+
+### Parse and Measure Performance
+
+```bash
+tree-sitter parse --time --stat example.js
+```
+
+### Parse with Edits
+
+```bash
+tree-sitter parse --edits "0,5|5 3 foo" example.js
+```
+
+### Parse from Stdin
+
+```bash
+echo "const x = 42;" | tree-sitter parse --scope source.js
+```

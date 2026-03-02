@@ -1,0 +1,404 @@
+---
+title: Predicates and Directives
+description: Add conditions, filters, and metadata to query patterns using predicates and directives
+---
+
+Predicates and directives allow you to specify arbitrary metadata and conditions associated with a pattern. They enable sophisticated filtering and annotation of query matches.
+
+## What are Predicates?
+
+**Predicates** are S-expressions added to patterns that specify conditions for matching. They:
+- Start with a predicate name beginning with `#` and ending with `?`
+- Contain `@`-prefixed capture names or strings as arguments
+- Filter matches based on captured node content
+
+**Directives** are similar but end with `!` instead of `?` and associate metadata with patterns.
+
+<Note>
+Predicates and directives are not handled directly by the Tree-sitter C library. They're exposed in structured form for higher-level bindings to implement. The predicates documented here are supported by the CLI and most language bindings.
+</Note>
+
+## The `eq?` Predicate
+
+The `eq?` predicate family allows matching against a single capture or string value.
+
+### Basic Usage
+
+The first argument must be a capture. The second can be either:
+- Another capture (to compare their text)
+- A string literal (to compare against a fixed value)
+
+```query
+((identifier) @variable.builtin
+  (#eq? @variable.builtin "self"))
+```
+
+This matches any identifier that is exactly `self`.
+
+### Comparing Captures
+
+Match key-value pairs where the value identifier has the same text as the key:
+
+```query
+(
+  (pair
+    key: (property_identifier) @key-name
+    value: (identifier) @value-name)
+  (#eq? @key-name @value-name)
+)
+```
+
+This matches patterns like `{ name: name }` in JavaScript.
+
+### Variants
+
+There are four variants in the `eq?` family:
+
+<Tabs>
+  <Tab title="#eq?">
+    **Exact Match**
+    
+    ```query
+    ((identifier) @var
+      (#eq? @var "self"))
+    ```
+    
+    All captured nodes must match the value.
+  </Tab>
+  <Tab title="#not-eq?">
+    **Negated Match**
+    
+    ```query
+    ((identifier) @var
+      (#not-eq? @var "self"))
+    ```
+    
+    No captured nodes can match the value.
+  </Tab>
+  <Tab title="#any-eq?">
+    **Any Match** (for quantified captures)
+    
+    ```query
+    ((comment)+ @comment.empty
+      (#any-eq? @comment.empty "//"))
+    ```
+    
+    At least one captured node must match.
+  </Tab>
+  <Tab title="#any-not-eq?">
+    **Any Non-Match** (for quantified captures)
+    
+    ```query
+    ((identifier)+ @names
+      (#any-not-eq? @names "reserved"))
+    ```
+    
+    At least one captured node must not match.
+  </Tab>
+</Tabs>
+
+<Warning>
+For quantified captures (using `+` or `*`), the default `#eq?` requires **all** nodes to match. Use `#any-eq?` to match if **any** node matches.
+</Warning>
+
+## The `match?` Predicate
+
+The `match?` predicate family uses regular expressions to match against capture text.
+
+### Basic Usage
+
+The first argument must be a capture, and the second must be a string containing a regular expression.
+
+Match identifiers in `SCREAMING_SNAKE_CASE`:
+
+```query
+((identifier) @constant
+  (#match? @constant "^[A-Z][A-Z_]+"))
+```
+
+### Documentation Comments
+
+Match C documentation comments that begin with `///`:
+
+```query
+((comment)+ @comment.documentation
+  (#match? @comment.documentation "^///\\s+.*"))
+```
+
+### Complex Patterns
+
+Match Cgo comments in Go (C code in comments before `import "C"`):
+
+```query
+((comment)+ @injection.content
+  .
+  (import_declaration
+    (import_spec path: (interpreted_string_literal) @_import_c))
+  (#eq? @_import_c "\"C\"")
+  (#match? @injection.content "^//"))
+```
+
+### Variants
+
+Like `eq?`, the `match?` family has four variants:
+
+- `#match?` - All captured nodes must match the regex
+- `#not-match?` - No captured nodes can match the regex  
+- `#any-match?` - At least one captured node must match
+- `#any-not-match?` - At least one captured node must not match
+
+<Tip>
+Use raw strings or escape backslashes properly. The regex `\s+` should be written as `"\\s+"` in query strings.
+</Tip>
+
+## The `any-of?` Predicate
+
+The `any-of?` predicate matches a capture against multiple strings, succeeding if the capture equals any of them.
+
+### Matching Multiple Values
+
+Match builtin variables in JavaScript:
+
+```query
+((identifier) @variable.builtin
+  (#any-of? @variable.builtin
+        "arguments"
+        "module"
+        "console"
+        "window"
+        "document"))
+```
+
+This is more readable than using multiple `#eq?` predicates or a complex regex.
+
+<Note>
+`#any-of?` performs exact string matching, not regex matching. Use `#match?` with alternation `(a|b|c)` for regex-based alternatives.
+</Note>
+
+## The `is?` and `is-not?` Predicates
+
+The `is?` predicate asserts that a capture has a given property. This is used for semantic properties that the query system provides.
+
+### Local Variable Check
+
+Match builtin variables that are not local:
+
+```query
+((identifier) @variable.builtin
+  (#match? @variable.builtin "^(arguments|module|console|window|document)$")
+  (#is-not? local))
+```
+
+<Warning>
+The `is?` predicate depends on the query implementation providing semantic properties. Not all bindings support custom properties.
+</Warning>
+
+## Directives
+
+Directives are similar to predicates but end with `!` instead of `?`. They associate metadata with patterns rather than filtering matches.
+
+## The `set!` Directive
+
+The `set!` directive associates arbitrary key-value pairs with a pattern.
+
+### Setting Injection Language
+
+Mark a comment as containing Doxygen syntax:
+
+```query
+((comment) @injection.content
+  (#match? @injection.content "/[*\\/][!*\\/]<?[^a-zA-Z]")
+  (#set! injection.language "doxygen"))
+```
+
+When iterating captures, you can access the `injection.language` property to parse the comment with the Doxygen parser.
+
+### Common Use Cases
+
+<AccordionGroup>
+  <Accordion title="Language Injection">
+    ```query
+    ((comment) @injection.content
+      (#match? @injection.content "^```sql")
+      (#set! injection.language "sql"))
+    ```
+    
+    Mark SQL code blocks in comments for syntax highlighting.
+  </Accordion>
+  
+  <Accordion title="Scope Metadata">
+    ```query
+    ((function_declaration) @scope
+      (#set! scope.type "function"))
+    ```
+    
+    Tag scopes with their type for semantic analysis.
+  </Accordion>
+  
+  <Accordion title="Priority Hints">
+    ```query
+    ((comment) @highlight
+      (#match? @highlight "TODO")
+      (#set! priority 100))
+    ```
+    
+    Set priority for overlapping highlights.
+  </Accordion>
+</AccordionGroup>
+
+## The `select-adjacent!` Directive
+
+The `select-adjacent!` directive filters capture text to preserve only nodes adjacent to another capture.
+
+It takes two capture names as arguments:
+1. The capture to filter
+2. The capture to check adjacency against
+
+See the [code navigation documentation](../../4-code-navigation.md#examples) for detailed examples.
+
+## The `strip!` Directive
+
+The `strip!` directive removes text from a capture using a regular expression.
+
+It takes two arguments:
+1. The capture to strip text from
+2. A regex pattern matching text to remove
+
+Any text matched by the regex is removed from the capture's text.
+
+<Note>
+The `strip!` directive is commonly used to clean up captured text by removing comment markers, whitespace, or other syntactic noise.
+</Note>
+
+## Practical Examples
+
+### Finding Test Functions
+
+```query
+((function_declaration
+  name: (identifier) @test-function)
+  (#match? @test-function "^test_.*"))
+```
+
+### Matching Builtin Types
+
+```query
+((type_identifier) @type.builtin
+  (#any-of? @type.builtin
+    "int"
+    "float"
+    "bool"
+    "string"
+    "void"))
+```
+
+### Deprecated API Usage
+
+```query
+((call_expression
+  function: (member_expression
+    property: (property_identifier) @deprecated))
+  (#any-of? @deprecated "setTimeout" "eval" "execScript")
+  (#set! deprecated true))
+```
+
+### SQL Injection Detection
+
+```query
+((call_expression
+  function: (member_expression
+    property: (property_identifier) @method)
+  arguments: (arguments
+    (binary_expression) @sql-concat))
+  (#eq? @method "query")
+  (#match? @sql-concat ".*\\+.*")
+  (#set! warning "Possible SQL injection"))
+```
+
+## Predicate Summary
+
+<CardGroup cols={2}>
+  <Card title="#eq?" icon="equals">
+    Direct match against capture or string. All nodes must match.
+  </Card>
+  <Card title="#match?" icon="magnifying-glass">
+    Regular expression match. All nodes must match the pattern.
+  </Card>
+  <Card title="#any-of?" icon="list">
+    Match against a list of strings. Node must equal one string.
+  </Card>
+  <Card title="#is?" icon="check">
+    Check for semantic property. Node must have the property.
+  </Card>
+</CardGroup>
+
+## Directive Summary
+
+<CardGroup cols={2}>
+  <Card title="#set!" icon="tag">
+    Associate key-value metadata with pattern
+  </Card>
+  <Card title="#select-adjacent!" icon="arrows-left-right">
+    Filter capture to adjacent nodes only
+  </Card>
+  <Card title="#strip!" icon="scissors">
+    Remove text matching regex from capture
+  </Card>
+</CardGroup>
+
+## Predicate Modifiers
+
+<Tabs>
+  <Tab title="Default (All)">
+    ```query
+    ((identifier)+ @names
+      (#eq? @names "foo"))
+    ```
+    
+    **All** captured nodes must match the predicate.
+  </Tab>
+  <Tab title="not- (Negation)">
+    ```query
+    ((identifier) @var
+      (#not-eq? @var "reserved"))
+    ```
+    
+    Predicate must **not** match.
+  </Tab>
+  <Tab title="any- (Existential)">
+    ```query
+    ((comment)+ @comments
+      (#any-match? @comments "TODO"))
+    ```
+    
+    **At least one** captured node must match.
+  </Tab>
+</Tabs>
+
+## Best Practices
+
+<Steps>
+  <Step title="Prefer Specific Predicates">
+    Use `#any-of?` instead of complex regex alternations when matching fixed strings. It's more readable and performant.
+  </Step>
+  <Step title="Combine Predicates">
+    Use multiple predicates to create precise conditions. They're evaluated as AND conditions.
+  </Step>
+  <Step title="Use Directives for Metadata">
+    Don't use predicates to filter when you just want to tag matches. Use `#set!` for metadata.
+  </Step>
+  <Step title="Test Quantified Predicates">
+    When using `+` or `*`, verify whether you need `#eq?` (all) or `#any-eq?` (any) behavior.
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Query API" icon="code" href="/queries/api">
+    Learn how to execute queries and access predicates programmatically
+  </Card>
+  <Card title="Query Syntax" icon="brackets-curly" href="/queries/syntax">
+    Review basic query syntax and pattern matching
+  </Card>
+</CardGroup>

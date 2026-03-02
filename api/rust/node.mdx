@@ -1,0 +1,674 @@
+---
+title: Node
+description: API reference for the Node struct
+---
+
+A `Node` represents a single node within a syntax tree. Nodes are lightweight and can be copied freely.
+
+## Node Identity
+
+### id
+
+```rust
+pub fn id(&self) -> usize
+```
+
+Get a numeric id for this node that is unique within a given syntax tree. If a new tree is created based on an older tree, and a node from the old tree is reused in the process, then that node will have the same id in both trees.
+
+### kind
+
+```rust
+pub fn kind(&self) -> &'static str
+```
+
+Get this node's type as a string.
+
+```rust
+let node = tree.root_node();
+assert_eq!(node.kind(), "source_file");
+```
+
+### kind_id
+
+```rust
+pub fn kind_id(&self) -> u16
+```
+
+Get this node's type as a numerical id.
+
+### grammar_id
+
+```rust
+pub fn grammar_id(&self) -> u16
+```
+
+Get the node's type as a numerical id as it appears in the grammar, ignoring aliases.
+
+### grammar_name
+
+```rust
+pub fn grammar_name(&self) -> &'static str
+```
+
+Get this node's symbol name as it appears in the grammar, ignoring aliases.
+
+## Node Properties
+
+### is_named
+
+```rust
+pub fn is_named(&self) -> bool
+```
+
+Check if this node is *named*. Named nodes correspond to named rules in the grammar, whereas *anonymous* nodes correspond to string literals in the grammar.
+
+```rust
+if node.is_named() {
+    println!("This is a named node: {}", node.kind());
+}
+```
+
+### is_extra
+
+```rust
+pub fn is_extra(&self) -> bool
+```
+
+Check if this node is *extra*. Extra nodes represent things like comments, which are not required by the grammar but can appear anywhere.
+
+### is_missing
+
+```rust
+pub fn is_missing(&self) -> bool
+```
+
+Check if this node is *missing*. Missing nodes are inserted by the parser in order to recover from certain kinds of syntax errors.
+
+### is_error
+
+```rust
+pub fn is_error(&self) -> bool
+```
+
+Check if this node represents a syntax error. Syntax errors represent parts of the code that could not be incorporated into a valid syntax tree.
+
+### has_error
+
+```rust
+pub fn has_error(&self) -> bool
+```
+
+Check if this node represents a syntax error or contains any syntax errors anywhere within it.
+
+### has_changes
+
+```rust
+pub fn has_changes(&self) -> bool
+```
+
+Check if this node has been edited.
+
+## Position and Range
+
+### start_byte
+
+```rust
+pub fn start_byte(&self) -> usize
+```
+
+Get the byte offset where this node starts.
+
+### end_byte
+
+```rust
+pub fn end_byte(&self) -> usize
+```
+
+Get the byte offset where this node ends.
+
+### byte_range
+
+```rust
+pub fn byte_range(&self) -> core::ops::Range<usize>
+```
+
+Get the byte range of source code that this node represents.
+
+```rust
+let range = node.byte_range();
+let text = &source_code[range];
+```
+
+### start_position
+
+```rust
+pub fn start_position(&self) -> Point
+```
+
+Get this node's start position in terms of rows and columns.
+
+```rust
+let pos = node.start_position();
+println!("Node starts at {}:{}", pos.row, pos.column);
+```
+
+### end_position
+
+```rust
+pub fn end_position(&self) -> Point
+```
+
+Get this node's end position in terms of rows and columns.
+
+### range
+
+```rust
+pub fn range(&self) -> Range
+```
+
+Get the range of source code that this node represents, both in terms of raw bytes and of row/column coordinates.
+
+## Children and Siblings
+
+### child_count
+
+```rust
+pub fn child_count(&self) -> u32
+```
+
+Get this node's number of children.
+
+### child
+
+```rust
+pub fn child(&self, i: u32) -> Option<Self>
+```
+
+Get the node's child at the given index, where zero represents the first child. This method is fairly fast, but its cost is technically log(i), so if you might be iterating over a long list of children, you should use `children` instead.
+
+<ParamField path="i" type="u32" required>
+  The index of the child to retrieve
+</ParamField>
+
+### named_child_count
+
+```rust
+pub fn named_child_count(&self) -> usize
+```
+
+Get this node's number of *named* children.
+
+### named_child
+
+```rust
+pub fn named_child(&self, i: u32) -> Option<Self>
+```
+
+Get this node's *named* child at the given index.
+
+<ParamField path="i" type="u32" required>
+  The index of the named child to retrieve
+</ParamField>
+
+### children
+
+```rust
+pub fn children<'cursor>(
+    &self,
+    cursor: &'cursor mut TreeCursor<'tree>,
+) -> impl ExactSizeIterator<Item = Node<'tree>> + 'cursor
+```
+
+Iterate over this node's children. A `TreeCursor` is used to retrieve the children efficiently.
+
+<ParamField path="cursor" type="&mut TreeCursor" required>
+  A tree cursor to use for iteration. To avoid unnecessary allocations, you should reuse the same cursor for subsequent calls.
+</ParamField>
+
+```rust
+let mut cursor = tree.walk();
+for child in node.children(&mut cursor) {
+    println!("Child: {}", child.kind());
+}
+```
+
+### named_children
+
+```rust
+pub fn named_children<'cursor>(
+    &self,
+    cursor: &'cursor mut TreeCursor<'tree>,
+) -> impl ExactSizeIterator<Item = Node<'tree>> + 'cursor
+```
+
+Iterate over this node's named children.
+
+### parent
+
+```rust
+pub fn parent(&self) -> Option<Self>
+```
+
+Get this node's immediate parent. Prefer `child_with_descendant` for iterating over this node's ancestors.
+
+### next_sibling
+
+```rust
+pub fn next_sibling(&self) -> Option<Self>
+```
+
+Get this node's next sibling.
+
+### prev_sibling
+
+```rust
+pub fn prev_sibling(&self) -> Option<Self>
+```
+
+Get this node's previous sibling.
+
+### next_named_sibling
+
+```rust
+pub fn next_named_sibling(&self) -> Option<Self>
+```
+
+Get this node's next named sibling.
+
+### prev_named_sibling
+
+```rust
+pub fn prev_named_sibling(&self) -> Option<Self>
+```
+
+Get this node's previous named sibling.
+
+## Field Access
+
+### child_by_field_name
+
+```rust
+pub fn child_by_field_name(&self, field_name: impl AsRef<[u8]>) -> Option<Self>
+```
+
+Get the first child with the given field name. If multiple children may have the same field name, access them using `children_by_field_name`.
+
+<ParamField path="field_name" type="impl AsRef<[u8]>" required>
+  The name of the field
+</ParamField>
+
+```rust
+if let Some(name_node) = function_node.child_by_field_name("name") {
+    println!("Function name: {}", name_node.utf8_text(source).unwrap());
+}
+```
+
+### child_by_field_id
+
+```rust
+pub fn child_by_field_id(&self, field_id: u16) -> Option<Self>
+```
+
+Get this node's child with the given numerical field id. You can convert a field name to an id using `Language::field_id_for_name`.
+
+<ParamField path="field_id" type="u16" required>
+  The numerical id of the field
+</ParamField>
+
+### children_by_field_name
+
+```rust
+pub fn children_by_field_name<'cursor>(
+    &self,
+    field_name: &str,
+    cursor: &'cursor mut TreeCursor<'tree>,
+) -> impl Iterator<Item = Node<'tree>> + 'cursor
+```
+
+Iterate over this node's children with a given field name.
+
+<ParamField path="field_name" type="&str" required>
+  The name of the field
+</ParamField>
+
+<ParamField path="cursor" type="&mut TreeCursor" required>
+  A tree cursor to use for iteration
+</ParamField>
+
+### children_by_field_id
+
+```rust
+pub fn children_by_field_id<'cursor>(
+    &self,
+    field_id: FieldId,
+    cursor: &'cursor mut TreeCursor<'tree>,
+) -> impl Iterator<Item = Node<'tree>> + 'cursor
+```
+
+Iterate over this node's children with a given field id.
+
+### field_name_for_child
+
+```rust
+pub fn field_name_for_child(&self, child_index: u32) -> Option<&'static str>
+```
+
+Get the field name of this node's child at the given index.
+
+<ParamField path="child_index" type="u32" required>
+  The index of the child
+</ParamField>
+
+### field_name_for_named_child
+
+```rust
+pub fn field_name_for_named_child(&self, named_child_index: u32) -> Option<&'static str>
+```
+
+Get the field name of this node's named child at the given index.
+
+<ParamField path="named_child_index" type="u32" required>
+  The index of the named child
+</ParamField>
+
+## Descendants
+
+### descendant_count
+
+```rust
+pub fn descendant_count(&self) -> usize
+```
+
+Get the node's number of descendants, including one for the node itself.
+
+### descendant_for_byte_range
+
+```rust
+pub fn descendant_for_byte_range(&self, start: usize, end: usize) -> Option<Self>
+```
+
+Get the smallest node within this node that spans the given byte range.
+
+<ParamField path="start" type="usize" required>
+  The start byte of the range
+</ParamField>
+
+<ParamField path="end" type="usize" required>
+  The end byte of the range
+</ParamField>
+
+### named_descendant_for_byte_range
+
+```rust
+pub fn named_descendant_for_byte_range(&self, start: usize, end: usize) -> Option<Self>
+```
+
+Get the smallest named node within this node that spans the given byte range.
+
+### descendant_for_point_range
+
+```rust
+pub fn descendant_for_point_range(&self, start: Point, end: Point) -> Option<Self>
+```
+
+Get the smallest node within this node that spans the given point range.
+
+<ParamField path="start" type="Point" required>
+  The start point of the range
+</ParamField>
+
+<ParamField path="end" type="Point" required>
+  The end point of the range
+</ParamField>
+
+### named_descendant_for_point_range
+
+```rust
+pub fn named_descendant_for_point_range(&self, start: Point, end: Point) -> Option<Self>
+```
+
+Get the smallest named node within this node that spans the given point range.
+
+### child_with_descendant
+
+```rust
+pub fn child_with_descendant(&self, descendant: Self) -> Option<Self>
+```
+
+Get the node that contains `descendant`. Note that this can return `descendant` itself.
+
+<ParamField path="descendant" type="Node" required>
+  The descendant node
+</ParamField>
+
+### first_child_for_byte
+
+```rust
+pub fn first_child_for_byte(&self, byte: usize) -> Option<Self>
+```
+
+Get this node's first child that contains or starts after the given byte offset.
+
+<ParamField path="byte" type="usize" required>
+  The byte offset
+</ParamField>
+
+### first_named_child_for_byte
+
+```rust
+pub fn first_named_child_for_byte(&self, byte: usize) -> Option<Self>
+```
+
+Get this node's first named child that contains or starts after the given byte offset.
+
+## Text Extraction
+
+### utf8_text
+
+```rust
+pub fn utf8_text<'a>(&self, source: &'a [u8]) -> Result<&'a str, str::Utf8Error>
+```
+
+Get the text of this node from UTF-8 encoded source code.
+
+<ParamField path="source" type="&[u8]" required>
+  The source code bytes
+</ParamField>
+
+```rust
+let text = node.utf8_text(source_code.as_bytes()).unwrap();
+println!("Node text: {}", text);
+```
+
+### utf16_text
+
+```rust
+pub fn utf16_text<'a>(&self, source: &'a [u16]) -> &'a [u16]
+```
+
+Get the text of this node from UTF-16 encoded source code.
+
+<ParamField path="source" type="&[u16]" required>
+  The source code as UTF-16 code units
+</ParamField>
+
+## Other Methods
+
+### language
+
+```rust
+pub fn language(&self) -> LanguageRef<'tree>
+```
+
+Get the `Language` that was used to parse this node's syntax tree.
+
+### parse_state
+
+```rust
+pub fn parse_state(&self) -> u16
+```
+
+Get this node's parse state.
+
+### next_parse_state
+
+```rust
+pub fn next_parse_state(&self) -> u16
+```
+
+Get the parse state after this node.
+
+### to_sexp
+
+```rust
+pub fn to_sexp(&self) -> String
+```
+
+Get an S-expression representing the node.
+
+```rust
+let sexp = node.to_sexp();
+println!("S-expression: {}", sexp);
+```
+
+### walk
+
+```rust
+pub fn walk(&self) -> TreeCursor<'tree>
+```
+
+Create a new `TreeCursor` starting from this node. Note that the given node is considered the root of the cursor, and the cursor cannot walk outside this node.
+
+```rust
+let mut cursor = node.walk();
+```
+
+### edit
+
+```rust
+pub fn edit(&mut self, edit: &InputEdit)
+```
+
+Edit this node to keep it in-sync with source code that has been edited. This function is only rarely needed. When you edit a syntax tree with the `Tree::edit` method, all of the nodes that you retrieve from the tree afterward will already reflect the edit.
+
+<ParamField path="edit" type="&InputEdit" required>
+  A description of the edit
+</ParamField>
+
+## Point
+
+A position in a multi-line text document, in terms of rows and columns. Rows and columns are zero-based.
+
+```rust
+pub struct Point {
+    pub row: usize,
+    pub column: usize,
+}
+```
+
+<ParamField path="row" type="usize">
+  The zero-based row number
+</ParamField>
+
+<ParamField path="column" type="usize">
+  The zero-based column number (in bytes)
+</ParamField>
+
+### new
+
+```rust
+impl Point {
+    pub const fn new(row: usize, column: usize) -> Self {
+        Self { row, column }
+    }
+}
+```
+
+## Range
+
+A range of positions in a multi-line text document, both in terms of bytes and of rows and columns.
+
+```rust
+pub struct Range {
+    pub start_byte: usize,
+    pub end_byte: usize,
+    pub start_point: Point,
+    pub end_point: Point,
+}
+```
+
+<ParamField path="start_byte" type="usize">
+  The byte offset where the range starts
+</ParamField>
+
+<ParamField path="end_byte" type="usize">
+  The byte offset where the range ends
+</ParamField>
+
+<ParamField path="start_point" type="Point">
+  The row/column position where the range starts
+</ParamField>
+
+<ParamField path="end_point" type="Point">
+  The row/column position where the range ends
+</ParamField>
+
+## Examples
+
+### Finding a Specific Node
+
+```rust
+let root = tree.root_node();
+let function_node = root.child_by_field_name("function").unwrap();
+let name_node = function_node.child_by_field_name("name").unwrap();
+let name = name_node.utf8_text(source.as_bytes()).unwrap();
+println!("Function name: {}", name);
+```
+
+### Iterating Over Children
+
+```rust
+let mut cursor = tree.walk();
+for child in node.children(&mut cursor) {
+    println!("Child: {} at {}:{}",
+        child.kind(),
+        child.start_position().row,
+        child.start_position().column);
+}
+```
+
+### Checking for Errors
+
+```rust
+if node.has_error() {
+    println!("Node contains syntax errors");
+    
+    // Find all error nodes
+    let mut cursor = node.walk();
+    fn find_errors(cursor: &mut TreeCursor) {
+        if cursor.node().is_error() {
+            println!("Error at: {:?}", cursor.node().range());
+        }
+        if cursor.goto_first_child() {
+            loop {
+                find_errors(cursor);
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
+            }
+            cursor.goto_parent();
+        }
+    }
+    find_errors(&mut cursor);
+}
+```
+
+### Finding Node at Position
+
+```rust
+let cursor_byte = 42;
+let node = root.descendant_for_byte_range(cursor_byte, cursor_byte);
+if let Some(node) = node {
+    println!("Node at cursor: {}", node.kind());
+}
+```

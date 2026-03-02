@@ -1,0 +1,188 @@
+---
+title: complete
+description: Generate shell completions for the Tree-sitter CLI
+---
+
+The `complete` command generates a completion script for your shell. This enables autocompletion for the `tree-sitter` CLI.
+
+```bash
+tree-sitter complete --shell <SHELL>
+```
+
+**Aliases:** `comp`
+
+## Options
+
+<ParamField path="--shell" type="shell" required>
+  The shell for which to generate the completion script.
+  
+  Supported values:
+  - `bash`
+  - `elvish`
+  - `fish`
+  - `powershell` (or `power-shell`)
+  - `zsh`
+  - `nushell`
+</ParamField>
+
+## Installation by Shell
+
+### Bash
+
+Add to your `~/.bashrc`:
+
+```bash
+eval "$(tree-sitter complete --shell bash)"
+```
+
+Or generate and save the completion script:
+
+```bash
+tree-sitter complete --shell bash > ~/.local/share/bash-completion/completions/tree-sitter
+```
+
+### Zsh
+
+Add to your `~/.zshrc`:
+
+```zsh
+eval "$(tree-sitter complete --shell zsh)"
+```
+
+Or save to a file in your `fpath`:
+
+```bash
+tree-sitter complete --shell zsh > ~/.zsh/completions/_tree-sitter
+```
+
+Then add to your `~/.zshrc` before `compinit`:
+
+```zsh
+fpath=(~/.zsh/completions $fpath)
+autoload -Uz compinit && compinit
+```
+
+### Fish
+
+Save to the Fish completions directory:
+
+```bash
+tree-sitter complete --shell fish > ~/.config/fish/completions/tree-sitter.fish
+```
+
+### PowerShell
+
+Add to your PowerShell profile:
+
+```powershell
+tree-sitter complete --shell powershell | Out-String | Invoke-Expression
+```
+
+To find your profile location:
+
+```powershell
+$PROFILE
+```
+
+### Elvish
+
+Add to your `~/.elvish/rc.elv`:
+
+```elvish
+eval (tree-sitter complete --shell elvish | slurp)
+```
+
+### Nushell
+
+Add to your Nushell config:
+
+```bash
+tree-sitter complete --shell nushell > ~/.config/nushell/completions/tree-sitter.nu
+```
+
+Then source it in your `config.nu`:
+
+```nushell
+source ~/.config/nushell/completions/tree-sitter.nu
+```
+
+## Examples
+
+### Generate Bash Completions
+
+```bash
+tree-sitter complete --shell bash
+```
+
+### Generate Zsh Completions
+
+```bash
+tree-sitter complete --shell zsh
+```
+
+### Generate Fish Completions
+
+```bash
+tree-sitter complete --shell fish
+```
+
+### Save to File
+
+```bash
+tree-sitter complete --shell bash > tree-sitter-completions.bash
+```
+
+## Features
+
+Once installed, you can:
+
+- Tab-complete command names:
+  ```bash
+  tree-sitter g<TAB> → tree-sitter generate
+  ```
+
+- Tab-complete option names:
+  ```bash
+  tree-sitter generate --a<TAB> → tree-sitter generate --abi
+  ```
+
+- See available options:
+  ```bash
+  tree-sitter parse --<TAB>
+  # Shows: --paths, --grammar-path, --lib-path, etc.
+  ```
+
+## Troubleshooting
+
+### Completions Not Working
+
+1. Verify the completion script was loaded:
+   ```bash
+   # For bash
+   complete -p tree-sitter
+   
+   # For zsh
+   which _tree-sitter
+   ```
+
+2. Restart your shell or source your config:
+   ```bash
+   # Bash
+   source ~/.bashrc
+   
+   # Zsh
+   source ~/.zshrc
+   ```
+
+3. Check file permissions:
+   ```bash
+   ls -l ~/.local/share/bash-completion/completions/tree-sitter
+   ```
+
+### Wrong Completions
+
+If completions are outdated:
+
+1. Regenerate the completion script
+2. Restart your shell
+3. Clear any completion cache if applicable

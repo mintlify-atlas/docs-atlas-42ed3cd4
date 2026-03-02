@@ -1,0 +1,270 @@
+---
+title: Tree API
+description: Functions for working with syntax trees
+---
+
+The Tree API provides functions for manipulating syntax trees, including copying, editing, and comparing trees.
+
+## Creating and deleting trees
+
+Trees are created by parsing source code with a parser. See the [Parser API](/api/c-api/parser) for details.
+
+### ts_tree_copy
+
+Create a shallow copy of the syntax tree.
+
+```c
+TSTree *ts_tree_copy(const TSTree *self);
+```
+
+<ParamField path="self" type="const TSTree *">
+  The tree to copy
+</ParamField>
+
+**Returns:** A new tree that shares the underlying data with the original.
+
+This operation is very fast because it only increments reference counts. You need to copy a syntax tree to use it on more than one thread at a time, as syntax trees are not thread safe.
+
+**Example:**
+```c
+TSTree *tree_copy = ts_tree_copy(tree);
+// Use tree_copy on another thread
+ts_tree_delete(tree_copy);
+```
+
+### ts_tree_delete
+
+Delete the syntax tree, freeing all of the memory that it used.
+
+```c
+void ts_tree_delete(TSTree *self);
+```
+
+<ParamField path="self" type="TSTree *">
+  The tree to delete
+</ParamField>
+
+## Accessing tree content
+
+### ts_tree_root_node
+
+Get the root node of the syntax tree.
+
+```c
+TSNode ts_tree_root_node(const TSTree *self);
+```
+
+<ParamField path="self" type="const TSTree *">
+  The tree instance
+</ParamField>
+
+**Returns:** The root node of the tree.
+
+**Example:**
+```c
+TSNode root = ts_tree_root_node(tree);
+char *s = ts_node_string(root);
+printf("Root node: %s\n", s);
+free(s);
+```
+
+### ts_tree_root_node_with_offset
+
+Get the root node of the syntax tree, with its position shifted forward by the given offset.
+
+```c
+TSNode ts_tree_root_node_with_offset(
+  const TSTree *self,
+  uint32_t offset_bytes,
+  TSPoint offset_extent
+);
+```
+
+<ParamField path="self" type="const TSTree *">
+  The tree instance
+</ParamField>
+
+<ParamField path="offset_bytes" type="uint32_t">
+  Number of bytes to offset
+</ParamField>
+
+<ParamField path="offset_extent" type="TSPoint">
+  Row and column offset
+</ParamField>
+
+**Returns:** The root node with adjusted positions.
+
+This is useful when you've parsed a fragment of a document and want to access the nodes as if they were positioned within the full document.
+
+### ts_tree_language
+
+Get the language that was used to parse the syntax tree.
+
+```c
+const TSLanguage *ts_tree_language(const TSTree *self);
+```
+
+<ParamField path="self" type="const TSTree *">
+  The tree instance
+</ParamField>
+
+**Returns:** The language used to parse the tree.
+
+### ts_tree_included_ranges
+
+Get the array of included ranges that was used to parse the syntax tree.
+
+```c
+TSRange *ts_tree_included_ranges(const TSTree *self, uint32_t *length);
+```
+
+<ParamField path="self" type="const TSTree *">
+  The tree instance
+</ParamField>
+
+<ParamField path="length" type="uint32_t *">
+  Output parameter for the number of ranges
+</ParamField>
+
+**Returns:** Pointer to an array of ranges (caller must free).
+
+The returned pointer must be freed by the caller using `free`.
+
+## Editing trees
+
+### ts_tree_edit
+
+Edit the syntax tree to keep it in sync with source code that has been edited.
+
+```c
+void ts_tree_edit(TSTree *self, const TSInputEdit *edit);
+```
+
+<ParamField path="self" type="TSTree *">
+  The tree to edit
+</ParamField>
+
+<ParamField path="edit" type="const TSInputEdit *">
+  Description of the edit
+</ParamField>
+
+You must describe the edit both in terms of byte offsets and in terms of (row, column) coordinates. This allows Tree-sitter to efficiently update the tree's internal state.
+
+After editing a tree, pass it as the `old_tree` parameter to `ts_parser_parse` for efficient incremental parsing.
+
+**Example:**
+```c
+TSInputEdit edit = {
+  .start_byte = 10,
+  .old_end_byte = 15,
+  .new_end_byte = 20,
+  .start_point = {0, 10},
+  .old_end_point = {0, 15},
+  .new_end_point = {0, 20}
+};
+
+ts_tree_edit(tree, &edit);
+
+// Now re-parse with the edited tree
+TSTree *new_tree = ts_parser_parse_string(
+  parser,
+  tree,  // Pass as old_tree
+  new_source,
+  strlen(new_source)
+);
+```
+
+## Comparing trees
+
+### ts_tree_get_changed_ranges
+
+Compare an old edited syntax tree to a new syntax tree representing the same document, returning an array of ranges whose syntactic structure has changed.
+
+```c
+TSRange *ts_tree_get_changed_ranges(
+  const TSTree *old_tree,
+  const TSTree *new_tree,
+  uint32_t *length
+);
+```
+
+<ParamField path="old_tree" type="const TSTree *">
+  The old tree (after editing with `ts_tree_edit`)
+</ParamField>
+
+<ParamField path="new_tree" type="const TSTree *">
+  The new tree (returned from parsing)
+</ParamField>
+
+<ParamField path="length" type="uint32_t *">
+  Output parameter for the number of ranges
+</ParamField>
+
+**Returns:** Array of changed ranges (caller must free with `free`).
+
+For this to work correctly, the old syntax tree must have been edited such that its ranges match up to the new tree. Generally, you'll want to call this function right after calling one of the parsing functions.
+
+The returned ranges indicate areas where the hierarchical structure of syntax nodes (from root to leaf) has changed between the old and new trees. Characters outside these ranges have identical ancestor nodes in both trees.
+
+Note that the returned ranges may be slightly larger than the exact changed areas, but Tree-sitter attempts to make them as small as possible.
+
+**Example:**
+```c
+// Edit the old tree
+TSInputEdit edit = {...};
+ts_tree_edit(old_tree, &edit);
+
+// Parse with the edited tree
+TSTree *new_tree = ts_parser_parse_string(
+  parser,
+  old_tree,
+  new_source,
+  strlen(new_source)
+);
+
+// Get the changed ranges
+uint32_t length;
+TSRange *ranges = ts_tree_get_changed_ranges(old_tree, new_tree, &length);
+
+for (uint32_t i = 0; i < length; i++) {
+  printf("Changed range: %u-%u\n",
+    ranges[i].start_byte,
+    ranges[i].end_byte
+  );
+}
+
+free(ranges);
+```
+
+## Debugging
+
+### ts_tree_print_dot_graph
+
+Write a DOT graph describing the syntax tree to the given file.
+
+```c
+void ts_tree_print_dot_graph(const TSTree *self, int file_descriptor);
+```
+
+<ParamField path="self" type="const TSTree *">
+  The tree to print
+</ParamField>
+
+<ParamField path="file_descriptor" type="int">
+  File descriptor to write to
+</ParamField>
+
+The output is in the DOT graph description language, which can be rendered with tools like Graphviz.
+
+**Example:**
+```c
+// Write to stdout
+ts_tree_print_dot_graph(tree, 1);
+
+// Write to a file
+int fd = open("tree.dot", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+if (fd >= 0) {
+  ts_tree_print_dot_graph(tree, fd);
+  close(fd);
+}
+```

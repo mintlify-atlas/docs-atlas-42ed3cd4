@@ -1,0 +1,690 @@
+---
+title: Query API
+description: API reference for the Tree-sitter Query class in JavaScript/Wasm
+---
+
+The `Query` class allows you to search for patterns in syntax trees using a powerful pattern matching language. Queries are written in a Scheme-like S-expression syntax.
+
+## Constructor
+
+### `new Query(language, source)`
+
+Create a new query from a string containing one or more S-expression patterns.
+
+```typescript
+constructor(language: Language, source: string)
+```
+
+**Parameters:**
+- `language` - The `Language` object associated with the query
+- `source` - A string containing one or more query patterns
+
+**Throws:** `QueryError` if the query string is invalid
+
+**Example:**
+
+```javascript
+import { Query } from 'web-tree-sitter';
+
+const query = new Query(JavaScript, `
+  (function_declaration
+    name: (identifier) @function.name)
+  
+  (call_expression
+    function: (identifier) @function.call)
+`);
+```
+
+## Properties
+
+### `captureNames`
+
+The names of the captures used in the query.
+
+```typescript
+readonly captureNames: string[]
+```
+
+**Example:**
+
+```javascript
+const query = new Query(JavaScript, '(identifier) @var');
+console.log(query.captureNames); // ['var']
+```
+
+### `captureQuantifiers`
+
+The quantifiers of the captures used in the query.
+
+```typescript
+readonly captureQuantifiers: CaptureQuantifier[][]
+```
+
+Quantifier values:
+- `CaptureQuantifier.Zero` (0) - Zero occurrences
+- `CaptureQuantifier.ZeroOrOne` (1) - Zero or one occurrence
+- `CaptureQuantifier.ZeroOrMore` (2) - Zero or more occurrences
+- `CaptureQuantifier.One` (3) - Exactly one occurrence
+- `CaptureQuantifier.OneOrMore` (4) - One or more occurrences
+
+### `predicates`
+
+User-defined predicates associated with each pattern.
+
+```typescript
+readonly predicates: QueryPredicate[][]
+```
+
+This includes predicates other than the built-in ones (`match?`, `eq?`, `any-of?`, `is?`, `is-not?`, `set!`).
+
+### `setProperties`
+
+Properties set via the `#set!` directive for each pattern.
+
+```typescript
+readonly setProperties: QueryProperties[]
+```
+
+### `assertedProperties`
+
+Properties asserted via the `#is?` directive for each pattern.
+
+```typescript
+readonly assertedProperties: QueryProperties[]
+```
+
+### `refutedProperties`
+
+Properties refuted via the `#is-not?` directive for each pattern.
+
+```typescript
+readonly refutedProperties: QueryProperties[]
+```
+
+## Methods
+
+### `matches(node, options?)`
+
+Execute the query and return all matches in the order they were found.
+
+```typescript
+matches(node: Node, options?: QueryOptions): QueryMatch[]
+```
+
+**Parameters:**
+- `node` - The node to execute the query on (typically the root node)
+- `options` (optional) - Options for query execution
+
+**Returns:** An array of `QueryMatch` objects
+
+**Example:**
+
+```javascript
+const tree = parser.parse('function one() { two(); function three() {} }');
+
+const query = new Query(JavaScript, `
+  (function_declaration name: (identifier) @fn-def)
+  (call_expression function: (identifier) @fn-ref)
+`);
+
+const matches = query.matches(tree.rootNode);
+
+for (const match of matches) {
+  console.log('Pattern:', match.patternIndex);
+  for (const capture of match.captures) {
+    console.log('  Capture:', capture.name, '=', capture.node.text);
+  }
+}
+// Pattern: 0
+//   Capture: fn-def = one
+// Pattern: 1
+//   Capture: fn-ref = two
+// Pattern: 0
+//   Capture: fn-def = three
+```
+
+### `captures(node, options?)`
+
+Execute the query and return all individual captures in the order they appear.
+
+```typescript
+captures(node: Node, options?: QueryOptions): QueryCapture[]
+```
+
+**Parameters:**
+- `node` - The node to execute the query on
+- `options` (optional) - Options for query execution
+
+**Returns:** An array of `QueryCapture` objects
+
+**Example:**
+
+```javascript
+const tree = parser.parse('const a = 1, b = 2, c = 3;');
+
+const query = new Query(JavaScript, '(identifier) @var');
+const captures = query.captures(tree.rootNode);
+
+for (const capture of captures) {
+  console.log(capture.name, ':', capture.node.text);
+}
+// var : a
+// var : b
+// var : c
+```
+
+<Note>
+Use `captures()` when you want a single ordered sequence of all captures, regardless of which pattern matched. Use `matches()` when you care about which pattern matched and need to see all captures grouped by match.
+</Note>
+
+### Query Options
+
+Both `matches()` and `captures()` accept an optional `options` parameter:
+
+```typescript
+interface QueryOptions {
+  // Byte range
+  startIndex?: number;
+  endIndex?: number;
+  
+  // Position range
+  startPosition?: Point;
+  endPosition?: Point;
+  
+  // Containing byte range (matches must be fully contained)
+  startContainingIndex?: number;
+  endContainingIndex?: number;
+  
+  // Containing position range (matches must be fully contained)
+  startContainingPosition?: Point;
+  endContainingPosition?: Point;
+  
+  // Performance tuning
+  matchLimit?: number;      // Max in-progress matches (default: 0xFFFFFFFF)
+  maxStartDepth?: number;   // Max depth to search (default: 0xFFFFFFFF)
+  
+  // Progress callback
+  progressCallback?: (state: QueryState) => void;
+}
+```
+
+**Example with range:**
+
+```javascript
+const captures = query.captures(tree.rootNode, {
+  startPosition: { row: 10, column: 0 },
+  endPosition: { row: 20, column: 0 },
+});
+```
+
+**Example with timeout:**
+
+```javascript
+const startTime = Date.now();
+const captures = query.captures(tree.rootNode, {
+  progressCallback: (state) => {
+    if (Date.now() - startTime > 1000) {
+      return true; // Cancel query
+    }
+  },
+});
+```
+
+### Pattern Information
+
+#### `patternCount()`
+
+Get the number of patterns in the query.
+
+```typescript
+patternCount(): number
+```
+
+#### `startIndexForPattern(patternIndex)`
+
+Get the byte offset where the given pattern starts in the query's source.
+
+```typescript
+startIndexForPattern(patternIndex: number): number
+```
+
+#### `endIndexForPattern(patternIndex)`
+
+Get the byte offset where the given pattern ends in the query's source.
+
+```typescript
+endIndexForPattern(patternIndex: number): number
+```
+
+#### `predicatesForPattern(patternIndex)`
+
+Get the predicates for a given pattern.
+
+```typescript
+predicatesForPattern(patternIndex: number): QueryPredicate[]
+```
+
+#### `isPatternRooted(patternIndex)`
+
+Check if a given pattern has a single root node.
+
+```typescript
+isPatternRooted(patternIndex: number): boolean
+```
+
+#### `isPatternNonLocal(patternIndex)`
+
+Check if a given pattern is non-local (can match at any depth).
+
+```typescript
+isPatternNonLocal(patternIndex: number): boolean
+```
+
+#### `isPatternGuaranteedAtStep(byteIndex)`
+
+Check if a given step in a query is 'definite' (guaranteed to match once reached).
+
+```typescript
+isPatternGuaranteedAtStep(byteIndex: number): boolean
+```
+
+### Capture Information
+
+#### `captureIndexForName(captureName)`
+
+Get the index for a given capture name.
+
+```typescript
+captureIndexForName(captureName: string): number
+```
+
+**Returns:** The index, or -1 if not found
+
+**Example:**
+
+```javascript
+const query = new Query(JavaScript, '(identifier) @var');
+const index = query.captureIndexForName('var');
+console.log(index); // 0
+```
+
+### Disabling Patterns and Captures
+
+#### `disablePattern(patternIndex)`
+
+Disable a pattern, preventing it from matching.
+
+```typescript
+disablePattern(patternIndex: number): void
+```
+
+**Example:**
+
+```javascript
+const query = new Query(JavaScript, `
+  (function_declaration) @func
+  (class_declaration) @class
+`);
+
+// Disable the class pattern
+query.disablePattern(1);
+
+const captures = query.captures(tree.rootNode);
+// Will only find functions, not classes
+```
+
+#### `disableCapture(captureName)`
+
+Disable a capture, preventing it from being returned in results.
+
+```typescript
+disableCapture(captureName: string): void
+```
+
+**Example:**
+
+```javascript
+const query = new Query(JavaScript, `
+  (function_declaration name: (identifier) @name body: (statement_block) @body)
+`);
+
+query.disableCapture('body');
+
+const captures = query.captures(tree.rootNode);
+// Will only return @name captures
+```
+
+### Match Limit
+
+#### `didExceedMatchLimit()`
+
+Check if the query exceeded its maximum number of in-progress matches on the last execution.
+
+```typescript
+didExceedMatchLimit(): boolean
+```
+
+**Example:**
+
+```javascript
+const matches = query.matches(tree.rootNode, { matchLimit: 100 });
+
+if (query.didExceedMatchLimit()) {
+  console.warn('Query hit match limit - results may be incomplete');
+}
+```
+
+### `delete()`
+
+Delete the query and free its resources.
+
+```typescript
+delete(): void
+```
+
+## Types
+
+### `QueryMatch`
+
+A match of a query to a set of nodes.
+
+```typescript
+interface QueryMatch {
+  patternIndex: number;              // Index of the pattern that matched
+  captures: QueryCapture[];          // All captures in this match
+  setProperties?: QueryProperties;   // Properties from #set!
+  assertedProperties?: QueryProperties; // Properties from #is?
+  refutedProperties?: QueryProperties;  // Properties from #is-not?
+}
+```
+
+### `QueryCapture`
+
+A particular node that has been captured with a name.
+
+```typescript
+interface QueryCapture {
+  patternIndex: number;              // Index of the pattern
+  name: string;                      // Name of the capture
+  node: Node;                        // The captured node
+  setProperties?: QueryProperties;   // Properties from #set!
+  assertedProperties?: QueryProperties; // Properties from #is?
+  refutedProperties?: QueryProperties;  // Properties from #is-not?
+}
+```
+
+### `QueryPredicate`
+
+A predicate that contains an operator and operands.
+
+```typescript
+interface QueryPredicate {
+  operator: string;           // e.g., 'match?', 'eq?', 'set!'
+  operands: PredicateStep[];  // Captures or strings
+}
+```
+
+### `PredicateStep`
+
+A step in a predicate (either a capture or a string).
+
+```typescript
+type PredicateStep = CapturePredicateStep | StringPredicateStep;
+
+interface CapturePredicateStep {
+  type: 'capture';
+  name: string;
+}
+
+interface StringPredicateStep {
+  type: 'string';
+  value: string;
+}
+```
+
+### `QueryError`
+
+Error thrown when parsing a query fails.
+
+```typescript
+class QueryError extends Error {
+  kind: QueryErrorKind;
+  info: QueryErrorInfo[typeof kind];
+  index: number;  // Byte offset where error occurred
+  length: number; // Length of the error region
+}
+```
+
+Error kinds:
+- `QueryErrorKind.Syntax` (1) - Syntax error
+- `QueryErrorKind.NodeName` (2) - Invalid node type name
+- `QueryErrorKind.FieldName` (3) - Invalid field name
+- `QueryErrorKind.CaptureName` (4) - Invalid capture name
+- `QueryErrorKind.PatternStructure` (5) - Invalid pattern structure
+
+## Query Language
+
+### Basic Patterns
+
+Match nodes by type:
+
+```scheme
+(function_declaration) @function
+```
+
+Match with fields:
+
+```scheme
+(function_declaration
+  name: (identifier) @name
+  body: (statement_block) @body)
+```
+
+Match nested structures:
+
+```scheme
+(call_expression
+  function: (member_expression
+    object: (identifier) @object
+    property: (property_identifier) @method))
+```
+
+### Wildcards
+
+Match any node:
+
+```scheme
+(function_declaration
+  name: (_) @name)  ; Any node type
+```
+
+### Anonymous Nodes
+
+Match literal tokens:
+
+```scheme
+(binary_expression
+  left: (_) @left
+  operator: "+"    ; Match literal '+' token
+  right: (_) @right)
+```
+
+### Alternation
+
+Match multiple patterns:
+
+```scheme
+[
+  (function_declaration) @function
+  (class_declaration) @class
+]
+```
+
+### Negation
+
+Match nodes that are NOT a certain type:
+
+```scheme
+(call_expression
+  function: (identifier) @func
+  (#not-eq? @func "console"))
+```
+
+### Predicates
+
+#### Text Predicates
+
+**Match against regex:**
+
+```scheme
+((identifier) @constant
+  (#match? @constant "^[A-Z_]+$"))
+```
+
+**String equality:**
+
+```scheme
+((identifier) @console
+  (#eq? @console "console"))
+```
+
+**Compare two captures:**
+
+```scheme
+((assignment_expression
+  left: (identifier) @left
+  right: (identifier) @right)
+  (#eq? @left @right))  ; Same variable on both sides
+```
+
+**Check against multiple values:**
+
+```scheme
+((identifier) @keyword
+  (#any-of? @keyword "if" "else" "while" "for"))
+```
+
+#### Property Predicates
+
+**Assert a property:**
+
+```scheme
+((identifier) @local
+  (#is? local))
+```
+
+**Refute a property:**
+
+```scheme
+((identifier) @global
+  (#is-not? local))
+```
+
+**Set a property:**
+
+```scheme
+((function_declaration) @func
+  (#set! kind "function"))
+```
+
+### Quantifiers
+
+Match multiple children:
+
+```scheme
+; Zero or more
+(call_expression
+  arguments: (arguments (_)* @arg))
+
+; One or more
+(array (_)+ @element)
+
+; Optional
+(function_declaration
+  name: (identifier)? @name)
+```
+
+## Examples
+
+### Find All Function Calls
+
+```javascript
+const query = new Query(JavaScript, `
+  (call_expression
+    function: (identifier) @function)
+`);
+
+const captures = query.captures(tree.rootNode);
+for (const { node } of captures) {
+  console.log('Function call:', node.text);
+}
+```
+
+### Find Unused Variables
+
+```javascript
+const query = new Query(JavaScript, `
+  (lexical_declaration
+    (variable_declarator
+      name: (identifier) @var.def))
+  
+  (identifier) @var.use
+`);
+
+const captures = query.captures(tree.rootNode);
+const defined = new Set();
+const used = new Set();
+
+for (const capture of captures) {
+  if (capture.name === 'var.def') {
+    defined.add(capture.node.text);
+  } else {
+    used.add(capture.node.text);
+  }
+}
+
+const unused = [...defined].filter(v => !used.has(v));
+console.log('Unused variables:', unused);
+```
+
+### Extract Function Names and Bodies
+
+```javascript
+const query = new Query(JavaScript, `
+  (function_declaration
+    name: (identifier) @name
+    body: (statement_block) @body)
+`);
+
+const matches = query.matches(tree.rootNode);
+
+for (const match of matches) {
+  const name = match.captures.find(c => c.name === 'name');
+  const body = match.captures.find(c => c.name === 'body');
+  
+  console.log('Function:', name.node.text);
+  console.log('Body:', body.node.text);
+}
+```
+
+### Find JSX Components
+
+```javascript
+const query = new Query(JSX, `
+  (jsx_element
+    open_tag: (jsx_opening_element
+      name: (identifier) @component))
+`);
+
+const components = query.captures(tree.rootNode)
+  .map(c => c.node.text)
+  .filter((name, i, arr) => arr.indexOf(name) === i); // unique
+
+console.log('Components used:', components);
+```
+
+## See Also
+
+- [Query syntax documentation](https://tree-sitter.github.io/tree-sitter/using-parsers/queries)
+- [Node class](/api/javascript/node) - Working with captured nodes
+- [Tree class](/api/javascript/tree) - Syntax tree operations

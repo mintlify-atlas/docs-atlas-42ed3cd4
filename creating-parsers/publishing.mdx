@@ -1,0 +1,461 @@
+---
+title: Publishing Parsers
+description: Share your Tree-sitter parser with the community
+---
+
+# Publishing Your Grammar
+
+Once your parser is stable and well-tested, you can publish it to make it available to others.
+
+## Publishing Platforms
+
+Publish your grammar to multiple registries to maximize discoverability:
+
+<CardGroup cols={2}>
+  <Card title="GitHub" icon="github">
+    Host your source code and releases
+  </Card>
+  
+  <Card title="crates.io" icon="rust">
+    Rust package registry
+  </Card>
+  
+  <Card title="npm" icon="npm">
+    JavaScript package registry
+  </Card>
+  
+  <Card title="PyPI" icon="python">
+    Python package index
+  </Card>
+</CardGroup>
+
+<Tip>
+Publishing to all platforms ensures your parser is accessible to users in different ecosystems.
+</Tip>
+
+## Automated Publishing
+
+Use [Tree-sitter's reusable workflows](https://github.com/tree-sitter/workflows) to automate the publishing process.
+
+### Setup GitHub Workflows
+
+Create `.github/workflows/publish.yml`:
+
+```yaml .github/workflows/publish.yml
+name: Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    uses: tree-sitter/workflows/.github/workflows/package.yml@main
+    secrets:
+      CARGO_TOKEN: ${{ secrets.CARGO_TOKEN }}
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+```
+
+### Configure Secrets
+
+Add repository secrets in GitHub Settings > Secrets and variables > Actions:
+
+<Steps>
+  <Step title="CARGO_TOKEN">
+    Get from [crates.io/me](https://crates.io/me) > API Tokens
+  </Step>
+  
+  <Step title="NPM_TOKEN">
+    Generate with `npm token create` or at [npmjs.com](https://www.npmjs.com/settings/~/tokens)
+  </Step>
+  
+  <Step title="PYPI_TOKEN">
+    Create at [pypi.org/manage/account](https://pypi.org/manage/account/#api-tokens)
+  </Step>
+</Steps>
+
+<Note>
+The workflow automatically regenerates the parser and publishes to all configured registries when you push a version tag.
+</Note>
+
+## Release Process
+
+Follow these steps to release a new version:
+
+<Steps>
+  <Step title="Bump version">
+    ```bash
+    tree-sitter version 1.0.0
+    ```
+    
+    This updates version numbers in:
+    - `package.json`
+    - `Cargo.toml`
+    - `pyproject.toml`
+  </Step>
+  
+  <Step title="Commit changes">
+    ```bash
+    git commit -am "Release 1.0.0"
+    ```
+    
+    Ensure your working directory is clean.
+  </Step>
+  
+  <Step title="Create tag">
+    ```bash
+    git tag v1.0.0
+    ```
+    
+    The tag name must start with `v` to trigger the workflow.
+  </Step>
+  
+  <Step title="Push to GitHub">
+    ```bash
+    git push --tags origin main
+    ```
+    
+    This triggers the automated publishing workflow.
+  </Step>
+  
+  <Step title="Verify workflow">
+    Check GitHub Actions to ensure the workflow succeeds.
+  </Step>
+</Steps>
+
+## Semantic Versioning
+
+Follow [Semantic Versioning](https://semver.org/) for predictable updates:
+
+### Version Format
+
+```
+MAJOR.MINOR.PATCH
+  │     │     │
+  │     │     └─ Bug fixes (no grammar changes)
+  │     └─────── New features (backward compatible)
+  └───────────── Breaking changes
+```
+
+### When to Increment
+
+<CardGroup cols={3}>
+  <Card title="MAJOR" icon="1">
+    Incompatible grammar changes:
+    - Node type renames
+    - Structural changes
+    - Removed nodes
+  </Card>
+  
+  <Card title="MINOR" icon="2">
+    New features:
+    - New node types
+    - New patterns
+    - Added fields
+  </Card>
+  
+  <Card title="PATCH" icon="3">
+    Bug fixes:
+    - Parse errors fixed
+    - No structural changes
+    - Performance improvements
+  </Card>
+</CardGroup>
+
+### Pre-1.0 Versions
+
+For `0.y.z` versions (pre-release), be more conservative:
+
+<Warning>
+Treat minor version changes as major changes, and patch changes as minor changes to maintain stability for early users.
+</Warning>
+
+**Example**:
+
+- `0.1.0` → `0.2.0`: Breaking grammar changes
+- `0.1.0` → `0.1.1`: New features
+- `0.1.0` → `0.1.0-patch.1`: Bug fixes only
+
+## Manual Publishing
+
+If you prefer manual control, publish to each registry separately:
+
+### Cargo (Rust)
+
+```bash
+# Login
+cargo login
+
+# Publish
+cargo publish
+```
+
+### npm (JavaScript)
+
+```bash
+# Login
+npm login
+
+# Publish
+npm publish
+```
+
+### PyPI (Python)
+
+```bash
+# Install tools
+pip install build twine
+
+# Build
+python -m build
+
+# Upload
+twine upload dist/*
+```
+
+## Pre-Release Checklist
+
+Before publishing, ensure:
+
+<AccordionGroup>
+  <Accordion title="Documentation is complete">
+    - README explains how to use the parser
+    - Examples show common use cases
+    - Grammar rules are documented
+    - Field names are described
+  </Accordion>
+  
+  <Accordion title="Tests are comprehensive">
+    - All rules have test coverage
+    - Edge cases are tested
+    - Tests pass on all platforms
+    - CI/CD is green
+  </Accordion>
+  
+  <Accordion title="Package metadata is correct">
+    - Version number is accurate
+    - License is specified
+    - Author information is filled in
+    - Repository URL is set
+  </Accordion>
+  
+  <Accordion title="Code quality is high">
+    - No compiler warnings
+    - External scanner is well-tested
+    - Performance is acceptable
+    - Memory is properly managed
+  </Accordion>
+</AccordionGroup>
+
+## Repository Structure
+
+A well-organized repository includes:
+
+```
+tree-sitter-mylang/
+├── .github/
+│   └── workflows/
+│       ├── ci.yml          # Test on push
+│       └── publish.yml     # Publish on tag
+├── bindings/
+│   ├── c/
+│   ├── node/
+│   ├── python/
+│   └── rust/
+├── queries/               # Syntax highlighting queries
+│   ├── highlights.scm
+│   ├── injections.scm
+│   └── locals.scm
+├── src/
+│   ├── parser.c           # Generated parser
+│   ├── scanner.c          # External scanner (if any)
+│   └── tree_sitter/
+│       └── parser.h
+├── test/
+│   └── corpus/            # Test files
+│       ├── statements.txt
+│       └── expressions.txt
+├── examples/              # Example code
+├── grammar.js             # Grammar definition
+├── package.json           # npm configuration
+├── Cargo.toml            # Rust configuration
+├── pyproject.toml        # Python configuration
+├── LICENSE
+└── README.md
+```
+
+## README Template
+
+Provide a clear README:
+
+```markdown README.md
+# tree-sitter-mylang
+
+Tree-sitter grammar for MyLang.
+
+## Installation
+
+### npm
+```bash
+npm install tree-sitter-mylang
+```
+
+### Cargo
+```bash
+cargo add tree-sitter-mylang
+```
+
+### PyPI
+```bash
+pip install tree-sitter-mylang
+```
+
+## Usage
+
+### Node.js
+```javascript
+const Parser = require('tree-sitter');
+const MyLang = require('tree-sitter-mylang');
+
+const parser = new Parser();
+parser.setLanguage(MyLang);
+
+const sourceCode = 'your code here';
+const tree = parser.parse(sourceCode);
+console.log(tree.rootNode.toString());
+```
+
+### Rust
+```rust
+use tree_sitter::{Parser, Language};
+
+extern "C" { fn tree_sitter_mylang() -> Language; }
+
+fn main() {
+    let mut parser = Parser::new();
+    parser.set_language(unsafe { tree_sitter_mylang() }).unwrap();
+    
+    let source_code = "your code here";
+    let tree = parser.parse(source_code, None).unwrap();
+    println!("{}", tree.root_node().to_sexp());
+}
+```
+
+### Python
+```python
+import tree_sitter_mylang as ts_mylang
+from tree_sitter import Language, Parser
+
+parser = Parser()
+parser.set_language(Language(ts_mylang.language()))
+
+source_code = b"your code here"
+tree = parser.parse(source_code)
+print(tree.root_node.sexp())
+```
+
+## Development
+
+```bash
+# Install dependencies
+npm install
+
+# Generate parser
+tree-sitter generate
+
+# Run tests
+tree-sitter test
+
+# Parse a file
+tree-sitter parse example.mylang
+```
+
+## Contributing
+
+Contributions are welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch
+3. Add tests for your changes
+4. Ensure all tests pass
+5. Submit a pull request
+
+## License
+
+MIT License - see LICENSE file for details
+```
+
+## Promote Your Parser
+
+After publishing, increase visibility:
+
+<CardGroup cols={2}>
+  <Card title="Add to tree-sitter.github.io" icon="globe">
+    Submit a PR to add your parser to the [official list](https://tree-sitter.github.io/tree-sitter/#available-parsers)
+  </Card>
+  
+  <Card title="Share on social media" icon="share">
+    Announce your parser on Twitter, Reddit, Hacker News, etc.
+  </Card>
+  
+  <Card title="Add syntax highlighting" icon="highlighter">
+    Create query files for syntax highlighting in popular editors
+  </Card>
+  
+  <Card title="Write blog posts" icon="blog">
+    Explain interesting aspects of your grammar or lessons learned
+  </Card>
+</CardGroup>
+
+## Maintenance
+
+### Respond to Issues
+
+- Monitor GitHub issues
+- Help users with questions
+- Fix bugs promptly
+- Consider feature requests
+
+### Keep Dependencies Updated
+
+```bash
+# Update Tree-sitter CLI
+cargo install tree-sitter-cli --locked
+
+# Update npm dependencies
+npm update
+```
+
+### Regular Releases
+
+Release updates regularly to:
+
+- Fix reported bugs
+- Add requested features
+- Improve performance
+- Update documentation
+
+## Example: Python Grammar
+
+The [tree-sitter-python](https://github.com/tree-sitter/tree-sitter-python) repository is an excellent example:
+
+- Comprehensive tests
+- Automated publishing workflow
+- Good documentation
+- Active maintenance
+- Multiple platform support
+
+## Next Steps
+
+Congratulations on publishing your parser! Consider:
+
+- Adding query files for syntax highlighting
+- Creating editor integrations (Neovim, Emacs, VSCode)
+- Writing documentation about interesting grammar patterns
+- Contributing to other Tree-sitter projects
+
+<Tip>
+Join the [Tree-sitter discussion forum](https://github.com/tree-sitter/tree-sitter/discussions) to connect with other parser authors and get help.
+</Tip>

@@ -1,0 +1,627 @@
+---
+title: External Scanners
+description: Handle complex lexical rules with custom C code
+---
+
+# External Scanners
+
+Many languages have tokens whose structure is impossible or inconvenient to describe with regular expressions. External scanners allow you to write custom C code to handle these cases.
+
+## When to Use External Scanners
+
+Common use cases:
+
+<CardGroup cols={2}>
+  <Card title="Indentation Tokens" icon="indent">
+    Python's INDENT/DEDENT tokens based on whitespace
+  </Card>
+  
+  <Card title="Heredocs" icon="file-code">
+    Multi-line string literals in Bash and Ruby
+  </Card>
+  
+  <Card title="Percent Strings" icon="percent">
+    Ruby's %q{}, %w[], and other percent literals
+  </Card>
+  
+  <Card title="Context-Sensitive Tokens" icon="code">
+    Tokens that depend on parsing state
+  </Card>
+</CardGroup>
+
+<Warning>
+Only use external scanners when regular expressions cannot handle the token. External scanners add complexity and must be carefully implemented to avoid bugs.
+</Warning>
+
+## Setup
+
+### 1. Declare External Tokens
+
+Add an `externals` section to your grammar:
+
+```javascript grammar.js
+export default grammar({
+  name: 'python',
+  
+  externals: $ => [
+    $.indent,
+    $.dedent,
+    $.newline
+  ],
+  
+  rules: {
+    // Use external tokens in rules
+    block: $ => seq(
+      $.indent,
+      repeat($._statement),
+      $.dedent
+    )
+  }
+});
+```
+
+### 2. Create Scanner File
+
+Create `src/scanner.c` in your project:
+
+```c src/scanner.c
+#include "tree_sitter/parser.h"
+#include "tree_sitter/alloc.h"
+#include "tree_sitter/array.h"
+
+// Must match order in externals array
+enum TokenType {
+  INDENT,
+  DEDENT,
+  NEWLINE
+};
+```
+
+<Note>
+The enum order must exactly match the order in your grammar's `externals` array. The names can be different but the order is critical.
+</Note>
+
+## Required Functions
+
+You must implement five functions with specific names based on your language:
+
+### Create
+
+Allocate and initialize your scanner state:
+
+```c
+void *tree_sitter_python_external_scanner_create() {
+  // Allocate scanner state
+  Array(int) *indents = ts_malloc(sizeof(Array(int)));
+  array_init(indents);
+  return indents;
+}
+```
+
+<Tip>
+Use `ts_malloc`, `ts_calloc`, and `ts_free` instead of libc functions to allow custom allocators.
+</Tip>
+
+### Destroy
+
+Free any allocated memory:
+
+```c
+void tree_sitter_python_external_scanner_destroy(void *payload) {
+  Array(int) *indents = payload;
+  array_delete(indents);
+  ts_free(indents);
+}
+```
+
+### Serialize
+
+Save scanner state to a byte buffer:
+
+```c
+unsigned tree_sitter_python_external_scanner_serialize(
+  void *payload,
+  char *buffer
+) {
+  Array(int) *indents = payload;
+  unsigned size = indents->size * sizeof(int);
+  
+  if (size > TREE_SITTER_SERIALIZATION_BUFFER_SIZE) {
+    return 0;
+  }
+  
+  memcpy(buffer, indents->contents, size);
+  return size;
+}
+```
+
+<Warning>
+The maximum buffer size is `TREE_SITTER_SERIALIZATION_BUFFER_SIZE`. Design your state to fit within this limit.
+</Warning>
+
+### Deserialize
+
+Restore scanner state from a byte buffer:
+
+```c
+void tree_sitter_python_external_scanner_deserialize(
+  void *payload,
+  const char *buffer,
+  unsigned length
+) {
+  Array(int) *indents = payload;
+  
+  // Clear existing state
+  array_clear(indents);
+  
+  // Restore from buffer
+  if (length > 0) {
+    unsigned count = length / sizeof(int);
+    array_reserve(indents, count);
+    memcpy(indents->contents, buffer, length);
+    indents->size = count;
+  }
+}
+```
+
+<Tip>
+Always clear state at the start of `deserialize` before restoring values.
+</Tip>
+
+### Scan
+
+Recognize tokens and return results:
+
+```c
+bool tree_sitter_python_external_scanner_scan(
+  void *payload,
+  TSLexer *lexer,
+  const bool *valid_symbols
+) {
+  // Implementation details below
+}
+```
+
+## The Scan Function
+
+### TSLexer Interface
+
+The `TSLexer` struct provides:
+
+<ParamField path="lookahead" type="int32_t">
+  Current character as a 32-bit Unicode code point
+</ParamField>
+
+<ParamField path="result_symbol" type="TSSymbol">
+  Set this to the recognized token type
+</ParamField>
+
+<ParamField path="advance" type="function">
+  `void (*advance)(TSLexer *, bool skip)`
+  
+  Advance to next character. Pass `true` to skip whitespace.
+</ParamField>
+
+<ParamField path="mark_end" type="function">
+  `void (*mark_end)(TSLexer *)`
+  
+  Mark the end of the token. Allows lookahead without consuming characters.
+</ParamField>
+
+<ParamField path="get_column" type="function">
+  `uint32_t (*get_column)(TSLexer *)`
+  
+  Get current column position (codepoints since line start)
+</ParamField>
+
+<ParamField path="eof" type="function">
+  `bool (*eof)(const TSLexer *)`
+  
+  Check if at end of file
+</ParamField>
+
+<ParamField path="is_at_included_range_start" type="function">
+  `bool (*is_at_included_range_start)(const TSLexer *)`
+  
+  Check if parser skipped to a new range (for multi-language documents)
+</ParamField>
+
+### Basic Pattern
+
+<Steps>
+  <Step title="Check valid_symbols">
+    Only look for tokens that are valid at this position.
+  </Step>
+  
+  <Step title="Advance through characters">
+    Call `lexer->advance()` to consume characters.
+  </Step>
+  
+  <Step title="Mark end (optional)">
+    Call `lexer->mark_end()` to enable lookahead.
+  </Step>
+  
+  <Step title="Set result_symbol">
+    Set `lexer->result_symbol` to the token type.
+  </Step>
+  
+  <Step title="Return true">
+    Return `true` if a token was recognized, `false` otherwise.
+  </Step>
+</Steps>
+
+### Example: String Scanner
+
+```c
+bool tree_sitter_mylang_external_scanner_scan(
+  void *payload,
+  TSLexer *lexer,
+  const bool *valid_symbols
+) {
+  // Only scan for strings when valid
+  if (!valid_symbols[STRING]) {
+    return false;
+  }
+  
+  // Skip leading whitespace
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    lexer->advance(lexer, true);
+  }
+  
+  // Check for opening quote
+  if (lexer->lookahead != '"') {
+    return false;
+  }
+  lexer->advance(lexer, false);
+  
+  // Consume string contents
+  while (!lexer->eof(lexer)) {
+    if (lexer->lookahead == '"') {
+      lexer->advance(lexer, false);
+      lexer->result_symbol = STRING;
+      return true;
+    }
+    
+    if (lexer->lookahead == '\\') {
+      lexer->advance(lexer, false);
+      if (!lexer->eof(lexer)) {
+        lexer->advance(lexer, false);
+      }
+    } else {
+      lexer->advance(lexer, false);
+    }
+  }
+  
+  return false;
+}
+```
+
+### Example: Python Indentation
+
+```c
+bool tree_sitter_python_external_scanner_scan(
+  void *payload,
+  TSLexer *lexer,
+  const bool *valid_symbols
+) {
+  Array(int) *indents = payload;
+  
+  // Handle newlines
+  if (valid_symbols[NEWLINE] && lexer->lookahead == '\n') {
+    lexer->advance(lexer, false);
+    lexer->result_symbol = NEWLINE;
+    return true;
+  }
+  
+  // Skip whitespace to measure indentation
+  unsigned indent = 0;
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    if (lexer->lookahead == ' ') {
+      indent++;
+    } else {
+      indent += 8;  // Tab = 8 spaces
+    }
+    lexer->advance(lexer, true);
+  }
+  
+  // Get previous indent level
+  unsigned prev_indent = indents->size > 0 
+    ? indents->contents[indents->size - 1] 
+    : 0;
+  
+  // Check for INDENT
+  if (valid_symbols[INDENT] && indent > prev_indent) {
+    array_push(indents, indent);
+    lexer->result_symbol = INDENT;
+    return true;
+  }
+  
+  // Check for DEDENT
+  if (valid_symbols[DEDENT] && indent < prev_indent) {
+    array_pop(indents);
+    lexer->result_symbol = DEDENT;
+    return true;
+  }
+  
+  return false;
+}
+```
+
+## Helper Utilities
+
+### Tree-sitter Allocator
+
+Use these instead of libc functions:
+
+<CodeGroup>
+```c Allocate
+void *ptr = ts_malloc(size);
+void *ptr = ts_calloc(count, size);  // Zero-initialized
+```
+
+```c Reallocate
+ptr = ts_realloc(ptr, new_size);
+```
+
+```c Free
+ts_free(ptr);
+```
+</CodeGroup>
+
+<Note>
+To enable custom allocators, compile with `-DTREE_SITTER_REUSE_ALLOCATOR` and link the library dynamically.
+</Note>
+
+### Array Helpers
+
+Use the array macros from `tree_sitter/array.h`:
+
+```c
+#include "tree_sitter/array.h"
+
+// Declare array type
+Array(int) *stack;
+
+// Initialize
+stack = ts_malloc(sizeof(Array(int)));
+array_init(stack);
+
+// Or zero-initialize
+stack = ts_calloc(1, sizeof(Array(int)));
+
+// Push
+array_push(stack, 42);
+
+// Pop
+int value = array_pop(stack);  // Returns value
+
+// Access
+int first = stack->contents[0];
+int last = stack->contents[stack->size - 1];
+
+// Size
+unsigned count = stack->size;
+
+// Reserve capacity
+array_reserve(stack, 100);
+
+// Clear
+array_clear(stack);
+
+// Delete
+array_delete(stack);
+ts_free(stack);
+```
+
+<Warning>
+Do not use underscore-prefixed array functions. They are internal helpers.
+</Warning>
+
+## Error Recovery
+
+During error recovery, Tree-sitter calls your scanner with all tokens marked as valid.
+
+### Detect Error Recovery
+
+Add an error sentinel token:
+
+```javascript
+externals: $ => [
+  $.token1,
+  $.token2,
+  $.error_sentinel  // Never used in grammar
+]
+```
+
+Check in your scanner:
+
+```c
+if (valid_symbols[ERROR_SENTINEL]) {
+  // In error recovery mode - return false to opt out
+  return false;
+}
+```
+
+## External Keywords
+
+You can include literal keywords in `externals`:
+
+```javascript
+externals: $ => ['if', 'then', 'else']
+```
+
+This makes the external scanner responsible for tokenizing these keywords.
+
+**Equivalent to**:
+
+```javascript
+externals: $ => [$.if_keyword, $.then_keyword, $.else_keyword],
+
+rules: {
+  if_statement: $ => seq(
+    alias($.if_keyword, 'if'),
+    // ...
+  )
+}
+```
+
+## Priority and Interaction
+
+<Warning>
+External scanners have priority over Tree-sitter's normal lexing. When an external token is valid, the scanner is called first.
+</Warning>
+
+### Fallback Behavior
+
+<Steps>
+  <Step title="Scanner called">
+    External scanner attempts to recognize the token.
+  </Step>
+  
+  <Step title="Scanner returns true">
+    The scanned token is used.
+  </Step>
+  
+  <Step title="Scanner returns false">
+    Tree-sitter falls back to internal lexer (for literal keywords only).
+  </Step>
+</Steps>
+
+## Common Pitfalls
+
+<Warning>
+**Infinite loops**: External scanners can easily create infinite loops. Always use `eof()` in loops and never emit zero-width tokens carelessly.
+</Warning>
+
+<CodeGroup>
+```c Good - Check EOF
+while (!lexer->eof(lexer) && lexer->lookahead != '\n') {
+  lexer->advance(lexer, false);
+}
+```
+
+```c Bad - No EOF Check
+while (lexer->lookahead != '\n') {  // Infinite loop at EOF!
+  lexer->advance(lexer, false);
+}
+```
+</CodeGroup>
+
+### Zero-Width Tokens
+
+<Warning>
+Be extremely careful with zero-width tokens. They can cause infinite loops if the parser keeps asking for the same token at the same position.
+</Warning>
+
+## Complete Example
+
+Here's a complete external scanner for a simple indentation-based language:
+
+```c src/scanner.c
+#include "tree_sitter/parser.h"
+#include "tree_sitter/alloc.h"
+#include "tree_sitter/array.h"
+#include <string.h>
+
+enum TokenType {
+  INDENT,
+  DEDENT,
+  NEWLINE,
+  ERROR_SENTINEL
+};
+
+void *tree_sitter_mylang_external_scanner_create() {
+  Array(int) *stack = ts_calloc(1, sizeof(Array(int)));
+  return stack;
+}
+
+void tree_sitter_mylang_external_scanner_destroy(void *payload) {
+  Array(int) *stack = payload;
+  array_delete(stack);
+  ts_free(stack);
+}
+
+unsigned tree_sitter_mylang_external_scanner_serialize(
+  void *payload,
+  char *buffer
+) {
+  Array(int) *stack = payload;
+  unsigned size = stack->size * sizeof(int);
+  
+  if (size > TREE_SITTER_SERIALIZATION_BUFFER_SIZE) {
+    return 0;
+  }
+  
+  memcpy(buffer, stack->contents, size);
+  return size;
+}
+
+void tree_sitter_mylang_external_scanner_deserialize(
+  void *payload,
+  const char *buffer,
+  unsigned length
+) {
+  Array(int) *stack = payload;
+  array_clear(stack);
+  
+  if (length > 0) {
+    unsigned count = length / sizeof(int);
+    array_reserve(stack, count);
+    memcpy(stack->contents, buffer, length);
+    stack->size = count;
+  }
+}
+
+bool tree_sitter_mylang_external_scanner_scan(
+  void *payload,
+  TSLexer *lexer,
+  const bool *valid_symbols
+) {
+  Array(int) *stack = payload;
+  
+  // Opt out of error recovery
+  if (valid_symbols[ERROR_SENTINEL]) {
+    return false;
+  }
+  
+  // Handle newlines
+  if (valid_symbols[NEWLINE] && lexer->lookahead == '\n') {
+    lexer->advance(lexer, false);
+    lexer->result_symbol = NEWLINE;
+    return true;
+  }
+  
+  // Measure indentation
+  if (valid_symbols[INDENT] || valid_symbols[DEDENT]) {
+    unsigned indent = 0;
+    while (lexer->lookahead == ' ') {
+      indent++;
+      lexer->advance(lexer, true);
+    }
+    
+    unsigned prev = stack->size > 0 ? stack->contents[stack->size - 1] : 0;
+    
+    if (valid_symbols[INDENT] && indent > prev) {
+      array_push(stack, indent);
+      lexer->result_symbol = INDENT;
+      return true;
+    }
+    
+    if (valid_symbols[DEDENT] && indent < prev) {
+      array_pop(stack);
+      lexer->result_symbol = DEDENT;
+      return true;
+    }
+  }
+  
+  return false;
+}
+```
+
+## Next Steps
+
+Now that you understand external scanners:
+
+- Write comprehensive [Tests](/creating-parsers/testing) for your scanner
+- Learn about [Publishing](/creating-parsers/publishing) your parser
+- See real examples in [tree-sitter-python](https://github.com/tree-sitter/tree-sitter-python/blob/master/src/scanner.c)

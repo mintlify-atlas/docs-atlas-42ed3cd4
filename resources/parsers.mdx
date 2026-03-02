@@ -1,0 +1,231 @@
+---
+title: Available Parsers
+description: List of official and community-maintained Tree-sitter parsers
+---
+
+Tree-sitter has a growing ecosystem of parsers for many programming languages. Parsers are maintained both by the core team and by the community.
+
+## Finding Parsers
+
+The most comprehensive list of available parsers is maintained on the Tree-sitter Wiki:
+
+<Card title="List of Parsers" icon="list" href="https://github.com/tree-sitter/tree-sitter/wiki/List-of-parsers">
+  Community-maintained list of all known Tree-sitter parsers
+</Card>
+
+## Official Parsers
+
+The following parsers are maintained in the official [tree-sitter organization](https://github.com/tree-sitter) on GitHub:
+
+<CardGroup cols={3}>
+  <Card title="Agda" icon="file-code" href="https://github.com/tree-sitter/tree-sitter-agda" />
+  <Card title="Bash" icon="terminal" href="https://github.com/tree-sitter/tree-sitter-bash" />
+  <Card title="C" icon="c" href="https://github.com/tree-sitter/tree-sitter-c" />
+  <Card title="C++" icon="code" href="https://github.com/tree-sitter/tree-sitter-cpp" />
+  <Card title="C#" icon="code" href="https://github.com/tree-sitter/tree-sitter-c-sharp" />
+  <Card title="CSS" icon="css3" href="https://github.com/tree-sitter/tree-sitter-css" />
+  <Card title="ERB / EJS" icon="file-code" href="https://github.com/tree-sitter/tree-sitter-embedded-template" />
+  <Card title="Go" icon="golang" href="https://github.com/tree-sitter/tree-sitter-go" />
+  <Card title="Haskell" icon="code" href="https://github.com/tree-sitter/tree-sitter-haskell" />
+  <Card title="HTML" icon="html5" href="https://github.com/tree-sitter/tree-sitter-html" />
+  <Card title="Java" icon="java" href="https://github.com/tree-sitter/tree-sitter-java" />
+  <Card title="JavaScript" icon="js" href="https://github.com/tree-sitter/tree-sitter-javascript" />
+  <Card title="JSDoc" icon="file-code" href="https://github.com/tree-sitter/tree-sitter-jsdoc" />
+  <Card title="JSON" icon="file-code" href="https://github.com/tree-sitter/tree-sitter-json" />
+  <Card title="Julia" icon="code" href="https://github.com/tree-sitter/tree-sitter-julia" />
+  <Card title="OCaml" icon="code" href="https://github.com/tree-sitter/tree-sitter-ocaml" />
+  <Card title="PHP" icon="php" href="https://github.com/tree-sitter/tree-sitter-php" />
+  <Card title="Python" icon="python" href="https://github.com/tree-sitter/tree-sitter-python" />
+  <Card title="Regex" icon="asterisk" href="https://github.com/tree-sitter/tree-sitter-regex" />
+  <Card title="Ruby" icon="gem" href="https://github.com/tree-sitter/tree-sitter-ruby" />
+  <Card title="Rust" icon="rust" href="https://github.com/tree-sitter/tree-sitter-rust" />
+  <Card title="Scala" icon="code" href="https://github.com/tree-sitter/tree-sitter-scala" />
+  <Card title="TypeScript" icon="js" href="https://github.com/tree-sitter/tree-sitter-typescript" />
+  <Card title="Verilog" icon="microchip" href="https://github.com/tree-sitter/tree-sitter-verilog" />
+</CardGroup>
+
+## Installing Parsers
+
+How you install and use parsers depends on your use case:
+
+### For the CLI
+
+The Tree-sitter CLI can automatically download and build parsers. See [CLI Configuration](/cli/init-config) for details on configuring parser directories.
+
+### For Language Bindings
+
+Each language binding has its own way of loading parsers:
+
+<Tabs>
+  <Tab title="Rust">
+    Add the parser as a dependency in your `Cargo.toml`:
+
+    ```toml
+    [dependencies]
+    tree-sitter = "0.24"
+    tree-sitter-rust = "0.23"
+    ```
+
+    Then use it in your code:
+
+    ```rust
+    use tree_sitter::Parser;
+    use tree_sitter_rust::language;
+
+    let mut parser = Parser::new();
+    parser.set_language(&language()).unwrap();
+    ```
+  </Tab>
+
+  <Tab title="JavaScript (Node)">
+    Install the parser from npm:
+
+    ```bash
+    npm install tree-sitter tree-sitter-javascript
+    ```
+
+    Then use it in your code:
+
+    ```javascript
+    const Parser = require('tree-sitter');
+    const JavaScript = require('tree-sitter-javascript');
+
+    const parser = new Parser();
+    parser.setLanguage(JavaScript);
+    ```
+  </Tab>
+
+  <Tab title="JavaScript (Wasm)">
+    Load the Wasm file:
+
+    ```javascript
+    import Parser from 'web-tree-sitter';
+
+    await Parser.init();
+    const parser = new Parser();
+    const Lang = await Parser.Language.load('tree-sitter-javascript.wasm');
+    parser.setLanguage(Lang);
+    ```
+
+    You can install the parser from npm and find the `.wasm` file in `node_modules`, or download it from the parser's GitHub releases.
+  </Tab>
+
+  <Tab title="Python">
+    Install the parser from PyPI:
+
+    ```bash
+    pip install tree-sitter tree-sitter-javascript
+    ```
+
+    Then use it in your code:
+
+    ```python
+    from tree_sitter import Language, Parser
+    import tree_sitter_javascript
+
+    parser = Parser()
+    parser.language = tree_sitter_javascript.language()
+    ```
+  </Tab>
+
+  <Tab title="C">
+    Link against the parser library and include its header:
+
+    ```c
+    #include <tree_sitter/api.h>
+
+    // Declare the language function
+    TSLanguage *tree_sitter_javascript(void);
+
+    // Create parser and set language
+    TSParser *parser = ts_parser_new();
+    ts_parser_set_language(parser, tree_sitter_javascript());
+    ```
+
+    You'll need to compile the parser's `parser.c` file and link it with your application.
+  </Tab>
+</Tabs>
+
+See the [Getting Started](/using-parsers/getting-started) guide for more details.
+
+## Community Parsers
+
+The community has created parsers for many more languages. Some notable sources:
+
+### tree-sitter-grammars Organization
+
+Many high-quality community parsers are maintained in the [tree-sitter-grammars organization](https://github.com/tree-sitter-grammars):
+
+<Tip>
+The tree-sitter-grammars organization hosts community-maintained parsers that follow consistent quality standards and best practices.
+</Tip>
+
+### Individual Repositories
+
+Many developers maintain their own Tree-sitter parsers. Check the [Parser List Wiki](https://github.com/tree-sitter/tree-sitter/wiki/List-of-parsers) for a complete catalog.
+
+## Creating Your Own Parser
+
+Don't see a parser for your language? You can create one yourself!
+
+<Card title="Creating Parsers" icon="hammer" href="/creating-parsers/getting-started">
+  Learn how to write a Tree-sitter parser from scratch
+</Card>
+
+The process involves:
+
+1. **Install the CLI**: Get the `tree-sitter` command-line tool
+2. **Initialize your parser**: Run `tree-sitter init` to set up the project
+3. **Write the grammar**: Define the syntax rules in `grammar.js`
+4. **Generate the parser**: Run `tree-sitter generate` to create the parser code
+5. **Test your parser**: Write and run tests to validate the parser
+6. **Publish**: Share your parser with the community
+
+See the [Creating Parsers](/creating-parsers/getting-started) section for a complete guide.
+
+## Parser Quality
+
+When choosing a parser, consider:
+
+- **Maintenance**: Is it actively maintained?
+- **Completeness**: Does it cover the full language specification?
+- **Test Coverage**: Are there comprehensive tests?
+- **Community**: Is it widely used?
+- **Performance**: How fast is it on typical code?
+
+<Note>
+Official parsers in the tree-sitter organization are generally well-maintained and follow best practices, but many community parsers are also excellent quality.
+</Note>
+
+## Query Files
+
+Many parsers include query files for syntax highlighting, code navigation, and more:
+
+- `queries/highlights.scm`: Syntax highlighting
+- `queries/tags.scm`: Code navigation and symbol tagging
+- `queries/locals.scm`: Local variable tracking
+- `queries/injections.scm`: Embedded language detection
+
+See [Syntax Highlighting](/syntax-highlighting) and [Code Navigation](/code-navigation) for more information.
+
+## Publishing Your Parser
+
+Once you've created a parser, you can share it with the community:
+
+<CardGroup cols={2}>
+  <Card title="Add to Wiki" icon="book" href="https://github.com/tree-sitter/tree-sitter/wiki/List-of-parsers">
+    Add your parser to the community list
+  </Card>
+  <Card title="Publishing Guide" icon="rocket" href="/creating-parsers/publishing">
+    Learn how to publish your parser to package registries
+  </Card>
+</CardGroup>
+
+## Getting Help
+
+If you need help with a parser:
+
+- Check the parser's repository for issues and documentation
+- Ask in [Discord](https://discord.gg/w7nTvsVJhm) or [Matrix](https://matrix.to/#/#tree-sitter-chat:matrix.org)
+- Open an issue in the parser's repository
+- See the [Community & Support](/resources/community) page for more ways to get help

@@ -1,0 +1,781 @@
+---
+title: Node API
+description: Functions for inspecting and traversing syntax tree nodes
+---
+
+The Node API provides functions for inspecting node properties and traversing syntax trees. Unlike other Tree-sitter types, `TSNode` is passed by value rather than by pointer.
+
+## Node properties
+
+### ts_node_type
+
+Get the node's type as a null-terminated string.
+
+```c
+const char *ts_node_type(TSNode self);
+```
+
+<ParamField path="self" type="TSNode">
+  The node to inspect
+</ParamField>
+
+**Returns:** The node's type name (do not free).
+
+**Example:**
+```c
+TSNode node = ts_tree_root_node(tree);
+printf("Node type: %s\n", ts_node_type(node));
+```
+
+### ts_node_symbol
+
+Get the node's type as a numerical id.
+
+```c
+TSSymbol ts_node_symbol(TSNode self);
+```
+
+<ParamField path="self" type="TSNode">
+  The node to inspect
+</ParamField>
+
+**Returns:** The node's symbol ID.
+
+### ts_node_language
+
+Get the node's language.
+
+```c
+const TSLanguage *ts_node_language(TSNode self);
+```
+
+<ParamField path="self" type="TSNode">
+  The node to inspect
+</ParamField>
+
+**Returns:** The language of the node's tree.
+
+### ts_node_grammar_type
+
+Get the node's type as it appears in the grammar ignoring aliases as a null-terminated string.
+
+```c
+const char *ts_node_grammar_type(TSNode self);
+```
+
+<ParamField path="self" type="TSNode">
+  The node to inspect
+</ParamField>
+
+**Returns:** The node's grammar type name (do not free).
+
+### ts_node_grammar_symbol
+
+Get the node's type as a numerical id as it appears in the grammar ignoring aliases.
+
+```c
+TSSymbol ts_node_grammar_symbol(TSNode self);
+```
+
+<ParamField path="self" type="TSNode">
+  The node to inspect
+</ParamField>
+
+**Returns:** The node's grammar symbol ID.
+
+This should be used in `ts_language_next_state` instead of `ts_node_symbol`.
+
+## Node positions
+
+### ts_node_start_byte
+
+Get the node's start byte.
+
+```c
+uint32_t ts_node_start_byte(TSNode self);
+```
+
+<ParamField path="self" type="TSNode">
+  The node to inspect
+</ParamField>
+
+**Returns:** The byte offset where the node starts.
+
+### ts_node_start_point
+
+Get the node's start position in terms of rows and columns.
+
+```c
+TSPoint ts_node_start_point(TSNode self);
+```
+
+<ParamField path="self" type="TSNode">
+  The node to inspect
+</ParamField>
+
+**Returns:** The node's start position.
+
+**Example:**
+```c
+TSPoint start = ts_node_start_point(node);
+printf("Node starts at line %u, column %u\n", start.row, start.column);
+```
+
+### ts_node_end_byte
+
+Get the node's end byte.
+
+```c
+uint32_t ts_node_end_byte(TSNode self);
+```
+
+<ParamField path="self" type="TSNode">
+  The node to inspect
+</ParamField>
+
+**Returns:** The byte offset where the node ends.
+
+### ts_node_end_point
+
+Get the node's end position in terms of rows and columns.
+
+```c
+TSPoint ts_node_end_point(TSNode self);
+```
+
+<ParamField path="self" type="TSNode">
+  The node to inspect
+</ParamField>
+
+**Returns:** The node's end position.
+
+## Node state
+
+### ts_node_string
+
+Get an S-expression representing the node as a string.
+
+```c
+char *ts_node_string(TSNode self);
+```
+
+<ParamField path="self" type="TSNode">
+  The node to convert to a string
+</ParamField>
+
+**Returns:** String representation (caller must free with `free`).
+
+**Example:**
+```c
+char *str = ts_node_string(node);
+printf("%s\n", str);
+free(str);
+```
+
+### ts_node_is_null
+
+Check if the node is null.
+
+```c
+bool ts_node_is_null(TSNode self);
+```
+
+<ParamField path="self" type="TSNode">
+  The node to check
+</ParamField>
+
+**Returns:** `true` if the node is null.
+
+Functions like `ts_node_child` and `ts_node_next_sibling` return a null node to indicate that no such node was found.
+
+### ts_node_is_named
+
+Check if the node is named.
+
+```c
+bool ts_node_is_named(TSNode self);
+```
+
+<ParamField path="self" type="TSNode">
+  The node to check
+</ParamField>
+
+**Returns:** `true` if the node is named.
+
+Named nodes correspond to named rules in the grammar, whereas anonymous nodes correspond to string literals in the grammar.
+
+### ts_node_is_missing
+
+Check if the node is missing.
+
+```c
+bool ts_node_is_missing(TSNode self);
+```
+
+<ParamField path="self" type="TSNode">
+  The node to check
+</ParamField>
+
+**Returns:** `true` if the node is missing.
+
+Missing nodes are inserted by the parser to recover from certain kinds of syntax errors.
+
+### ts_node_is_extra
+
+Check if the node is extra.
+
+```c
+bool ts_node_is_extra(TSNode self);
+```
+
+<ParamField path="self" type="TSNode">
+  The node to check
+</ParamField>
+
+**Returns:** `true` if the node is extra.
+
+Extra nodes represent things like comments, which are not required by the grammar but can appear anywhere.
+
+### ts_node_has_changes
+
+Check if a syntax node has been edited.
+
+```c
+bool ts_node_has_changes(TSNode self);
+```
+
+<ParamField path="self" type="TSNode">
+  The node to check
+</ParamField>
+
+**Returns:** `true` if the node has been edited.
+
+### ts_node_has_error
+
+Check if the node is a syntax error or contains any syntax errors.
+
+```c
+bool ts_node_has_error(TSNode self);
+```
+
+<ParamField path="self" type="TSNode">
+  The node to check
+</ParamField>
+
+**Returns:** `true` if the node is or contains an error.
+
+### ts_node_is_error
+
+Check if the node is a syntax error.
+
+```c
+bool ts_node_is_error(TSNode self);
+```
+
+<ParamField path="self" type="TSNode">
+  The node to check
+</ParamField>
+
+**Returns:** `true` if the node is an error.
+
+### ts_node_parse_state
+
+Get this node's parse state.
+
+```c
+TSStateId ts_node_parse_state(TSNode self);
+```
+
+<ParamField path="self" type="TSNode">
+  The node to inspect
+</ParamField>
+
+**Returns:** The parse state at the start of the node.
+
+### ts_node_next_parse_state
+
+Get the parse state after this node.
+
+```c
+TSStateId ts_node_next_parse_state(TSNode self);
+```
+
+<ParamField path="self" type="TSNode">
+  The node to inspect
+</ParamField>
+
+**Returns:** The parse state after the node.
+
+## Node relationships
+
+### ts_node_parent
+
+Get the node's immediate parent.
+
+```c
+TSNode ts_node_parent(TSNode self);
+```
+
+<ParamField path="self" type="TSNode">
+  The node to inspect
+</ParamField>
+
+**Returns:** The parent node, or a null node if there is no parent.
+
+Prefer `ts_node_child_with_descendant` for iterating over the node's ancestors.
+
+### ts_node_child_with_descendant
+
+Get the node that contains the given descendant.
+
+```c
+TSNode ts_node_child_with_descendant(TSNode self, TSNode descendant);
+```
+
+<ParamField path="self" type="TSNode">
+  The ancestor node
+</ParamField>
+
+<ParamField path="descendant" type="TSNode">
+  The descendant node
+</ParamField>
+
+**Returns:** The direct child of `self` that contains `descendant`.
+
+Note that this can return `descendant` itself if it's a direct child of `self`.
+
+### ts_node_child
+
+Get the node's child at the given index.
+
+```c
+TSNode ts_node_child(TSNode self, uint32_t child_index);
+```
+
+<ParamField path="self" type="TSNode">
+  The parent node
+</ParamField>
+
+<ParamField path="child_index" type="uint32_t">
+  The child index, where zero represents the first child
+</ParamField>
+
+**Returns:** The child node, or a null node if the index is out of bounds.
+
+### ts_node_field_name_for_child
+
+Get the field name for the node's child at the given index.
+
+```c
+const char *ts_node_field_name_for_child(TSNode self, uint32_t child_index);
+```
+
+<ParamField path="self" type="TSNode">
+  The parent node
+</ParamField>
+
+<ParamField path="child_index" type="uint32_t">
+  The child index
+</ParamField>
+
+**Returns:** The field name, or `NULL` if no field is found.
+
+### ts_node_field_name_for_named_child
+
+Get the field name for the node's named child at the given index.
+
+```c
+const char *ts_node_field_name_for_named_child(TSNode self, uint32_t named_child_index);
+```
+
+<ParamField path="self" type="TSNode">
+  The parent node
+</ParamField>
+
+<ParamField path="named_child_index" type="uint32_t">
+  The named child index
+</ParamField>
+
+**Returns:** The field name, or `NULL` if no field is found.
+
+### ts_node_child_count
+
+Get the node's number of children.
+
+```c
+uint32_t ts_node_child_count(TSNode self);
+```
+
+<ParamField path="self" type="TSNode">
+  The node to inspect
+</ParamField>
+
+**Returns:** The number of children.
+
+### ts_node_named_child
+
+Get the node's named child at the given index.
+
+```c
+TSNode ts_node_named_child(TSNode self, uint32_t child_index);
+```
+
+<ParamField path="self" type="TSNode">
+  The parent node
+</ParamField>
+
+<ParamField path="child_index" type="uint32_t">
+  The named child index
+</ParamField>
+
+**Returns:** The named child node, or a null node if the index is out of bounds.
+
+See also `ts_node_is_named`.
+
+### ts_node_named_child_count
+
+Get the node's number of named children.
+
+```c
+uint32_t ts_node_named_child_count(TSNode self);
+```
+
+<ParamField path="self" type="TSNode">
+  The node to inspect
+</ParamField>
+
+**Returns:** The number of named children.
+
+See also `ts_node_is_named`.
+
+### ts_node_child_by_field_name
+
+Get the node's child with the given field name.
+
+```c
+TSNode ts_node_child_by_field_name(
+  TSNode self,
+  const char *name,
+  uint32_t name_length
+);
+```
+
+<ParamField path="self" type="TSNode">
+  The parent node
+</ParamField>
+
+<ParamField path="name" type="const char *">
+  The field name
+</ParamField>
+
+<ParamField path="name_length" type="uint32_t">
+  The length of the field name
+</ParamField>
+
+**Returns:** The child node with the given field, or a null node if not found.
+
+**Example:**
+```c
+TSNode name_node = ts_node_child_by_field_name(node, "name", 4);
+if (!ts_node_is_null(name_node)) {
+  printf("Found name field\n");
+}
+```
+
+### ts_node_child_by_field_id
+
+Get the node's child with the given numerical field id.
+
+```c
+TSNode ts_node_child_by_field_id(TSNode self, TSFieldId field_id);
+```
+
+<ParamField path="self" type="TSNode">
+  The parent node
+</ParamField>
+
+<ParamField path="field_id" type="TSFieldId">
+  The numerical field ID
+</ParamField>
+
+**Returns:** The child node with the given field, or a null node if not found.
+
+You can convert a field name to an id using `ts_language_field_id_for_name`.
+
+## Siblings
+
+### ts_node_next_sibling
+
+Get the node's next sibling.
+
+```c
+TSNode ts_node_next_sibling(TSNode self);
+```
+
+<ParamField path="self" type="TSNode">
+  The node to inspect
+</ParamField>
+
+**Returns:** The next sibling, or a null node if there is none.
+
+### ts_node_prev_sibling
+
+Get the node's previous sibling.
+
+```c
+TSNode ts_node_prev_sibling(TSNode self);
+```
+
+<ParamField path="self" type="TSNode">
+  The node to inspect
+</ParamField>
+
+**Returns:** The previous sibling, or a null node if there is none.
+
+### ts_node_next_named_sibling
+
+Get the node's next named sibling.
+
+```c
+TSNode ts_node_next_named_sibling(TSNode self);
+```
+
+<ParamField path="self" type="TSNode">
+  The node to inspect
+</ParamField>
+
+**Returns:** The next named sibling, or a null node if there is none.
+
+### ts_node_prev_named_sibling
+
+Get the node's previous named sibling.
+
+```c
+TSNode ts_node_prev_named_sibling(TSNode self);
+```
+
+<ParamField path="self" type="TSNode">
+  The node to inspect
+</ParamField>
+
+**Returns:** The previous named sibling, or a null node if there is none.
+
+## Searching
+
+### ts_node_first_child_for_byte
+
+Get the node's first child that contains or starts after the given byte offset.
+
+```c
+TSNode ts_node_first_child_for_byte(TSNode self, uint32_t byte);
+```
+
+<ParamField path="self" type="TSNode">
+  The parent node
+</ParamField>
+
+<ParamField path="byte" type="uint32_t">
+  The byte offset to search for
+</ParamField>
+
+**Returns:** The child node, or a null node if not found.
+
+### ts_node_first_named_child_for_byte
+
+Get the node's first named child that contains or starts after the given byte offset.
+
+```c
+TSNode ts_node_first_named_child_for_byte(TSNode self, uint32_t byte);
+```
+
+<ParamField path="self" type="TSNode">
+  The parent node
+</ParamField>
+
+<ParamField path="byte" type="uint32_t">
+  The byte offset to search for
+</ParamField>
+
+**Returns:** The named child node, or a null node if not found.
+
+### ts_node_descendant_count
+
+Get the node's number of descendants, including one for the node itself.
+
+```c
+uint32_t ts_node_descendant_count(TSNode self);
+```
+
+<ParamField path="self" type="TSNode">
+  The node to inspect
+</ParamField>
+
+**Returns:** The total number of descendants.
+
+### ts_node_descendant_for_byte_range
+
+Get the smallest node within this node that spans the given range of bytes.
+
+```c
+TSNode ts_node_descendant_for_byte_range(TSNode self, uint32_t start, uint32_t end);
+```
+
+<ParamField path="self" type="TSNode">
+  The node to search within
+</ParamField>
+
+<ParamField path="start" type="uint32_t">
+  The start byte offset
+</ParamField>
+
+<ParamField path="end" type="uint32_t">
+  The end byte offset
+</ParamField>
+
+**Returns:** The smallest descendant spanning the range.
+
+### ts_node_descendant_for_point_range
+
+Get the smallest node within this node that spans the given range of positions.
+
+```c
+TSNode ts_node_descendant_for_point_range(TSNode self, TSPoint start, TSPoint end);
+```
+
+<ParamField path="self" type="TSNode">
+  The node to search within
+</ParamField>
+
+<ParamField path="start" type="TSPoint">
+  The start position
+</ParamField>
+
+<ParamField path="end" type="TSPoint">
+  The end position
+</ParamField>
+
+**Returns:** The smallest descendant spanning the range.
+
+### ts_node_named_descendant_for_byte_range
+
+Get the smallest named node within this node that spans the given range of bytes.
+
+```c
+TSNode ts_node_named_descendant_for_byte_range(TSNode self, uint32_t start, uint32_t end);
+```
+
+<ParamField path="self" type="TSNode">
+  The node to search within
+</ParamField>
+
+<ParamField path="start" type="uint32_t">
+  The start byte offset
+</ParamField>
+
+<ParamField path="end" type="uint32_t">
+  The end byte offset
+</ParamField>
+
+**Returns:** The smallest named descendant spanning the range.
+
+### ts_node_named_descendant_for_point_range
+
+Get the smallest named node within this node that spans the given range of positions.
+
+```c
+TSNode ts_node_named_descendant_for_point_range(TSNode self, TSPoint start, TSPoint end);
+```
+
+<ParamField path="self" type="TSNode">
+  The node to search within
+</ParamField>
+
+<ParamField path="start" type="TSPoint">
+  The start position
+</ParamField>
+
+<ParamField path="end" type="TSPoint">
+  The end position
+</ParamField>
+
+**Returns:** The smallest named descendant spanning the range.
+
+## Editing
+
+### ts_node_edit
+
+Edit the node to keep it in-sync with source code that has been edited.
+
+```c
+void ts_node_edit(TSNode *self, const TSInputEdit *edit);
+```
+
+<ParamField path="self" type="TSNode *">
+  Pointer to the node to edit
+</ParamField>
+
+<ParamField path="edit" type="const TSInputEdit *">
+  Description of the edit
+</ParamField>
+
+This function is only rarely needed. When you edit a syntax tree with `ts_tree_edit`, all of the nodes that you retrieve from the tree afterward will already reflect the edit. You only need to use `ts_node_edit` when you have a `TSNode` instance that you want to keep and continue to use after an edit.
+
+### ts_point_edit
+
+Edit a point to keep it in-sync with source code that has been edited.
+
+```c
+void ts_point_edit(TSPoint *point, uint32_t *point_byte, const TSInputEdit *edit);
+```
+
+<ParamField path="point" type="TSPoint *">
+  Pointer to the point to edit
+</ParamField>
+
+<ParamField path="point_byte" type="uint32_t *">
+  Pointer to the byte offset to edit
+</ParamField>
+
+<ParamField path="edit" type="const TSInputEdit *">
+  Description of the edit
+</ParamField>
+
+This function updates a single point's byte offset and row/column position based on an edit operation. This is useful for editing points without requiring a tree or node instance.
+
+### ts_range_edit
+
+Edit a range to keep it in-sync with source code that has been edited.
+
+```c
+void ts_range_edit(TSRange *range, const TSInputEdit *edit);
+```
+
+<ParamField path="range" type="TSRange *">
+  Pointer to the range to edit
+</ParamField>
+
+<ParamField path="edit" type="const TSInputEdit *">
+  Description of the edit
+</ParamField>
+
+This function updates a range's start and end positions based on an edit operation. This is useful for editing ranges without requiring a tree or node instance.
+
+## Comparison
+
+### ts_node_eq
+
+Check if two nodes are identical.
+
+```c
+bool ts_node_eq(TSNode self, TSNode other);
+```
+
+<ParamField path="self" type="TSNode">
+  The first node
+</ParamField>
+
+<ParamField path="other" type="TSNode">
+  The second node
+</ParamField>
+
+**Returns:** `true` if the nodes are identical.

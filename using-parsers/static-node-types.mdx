@@ -1,0 +1,410 @@
+---
+title: Static Node Types
+description: Using node-types.json for type safety and code generation
+---
+
+## Introduction
+
+In languages with static typing, it can be helpful for syntax trees to provide specific type information about individual syntax nodes. Tree-sitter makes this information available via a generated file called `node-types.json`.
+
+This **node types** file provides structured data about every possible syntax node in a grammar. You can use this data to generate type declarations in statically-typed programming languages.
+
+## File Location
+
+The `node-types.json` file is generated when you build a grammar and is typically located in the `src/` directory of a parser:
+
+```bash
+tree-sitter-javascript/
+├── grammar.js
+├── src/
+│   ├── parser.c
+│   ├── node-types.json  ← Generated file
+│   └── ...
+└── ...
+```
+
+## File Structure
+
+The node types file contains an array of objects, each describing a particular type of syntax node.
+
+## Basic Information
+
+Every object in the array has these two entries:
+
+<ParamField path="type" type="string" required>
+  Indicates which grammar rule the node represents. This corresponds to the `ts_node_type` function.
+</ParamField>
+
+<ParamField path="named" type="boolean" required>
+  Indicates whether this node corresponds to a rule name in the grammar (`true`) or just a string literal (`false`).
+</ParamField>
+
+### Examples
+
+```json Named Node
+{
+  "type": "string_literal",
+  "named": true
+}
+```
+
+```json Anonymous Node
+{
+  "type": "+",
+  "named": false
+}
+```
+
+<Note>
+  Together, the `type` and `named` fields constitute a unique identifier for a node type. No two top-level objects in `node-types.json` should have the same values for both fields.
+</Note>
+
+## Internal Nodes
+
+Many syntax nodes can have **children**. The node type object describes possible children using these entries:
+
+<ParamField path="fields" type="object">
+  An object describing the possible **fields** that the node can have. Keys are field names, and values are **child type** objects.
+</ParamField>
+
+<ParamField path="children" type="object">
+  A **child type** object describing all the node's possible **named** children **without** fields.
+</ParamField>
+
+### Child Type Objects
+
+A **child type** object describes a set of child nodes:
+
+<ResponseField name="required" type="boolean">
+  Whether there is always at least one node in this set
+</ResponseField>
+
+<ResponseField name="multiple" type="boolean">
+  Whether there can be multiple nodes in this set
+</ResponseField>
+
+<ResponseField name="types" type="array">
+  An array of objects representing the possible types of nodes in this set. Each object has `type` and `named` keys.
+</ResponseField>
+
+### Example with Fields
+
+```json
+{
+  "type": "method_definition",
+  "named": true,
+  "fields": {
+    "body": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        { "type": "statement_block", "named": true }
+      ]
+    },
+    "decorator": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        { "type": "decorator", "named": true }
+      ]
+    },
+    "name": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        { "type": "computed_property_name", "named": true },
+        { "type": "property_identifier", "named": true }
+      ]
+    },
+    "parameters": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        { "type": "formal_parameters", "named": true }
+      ]
+    }
+  }
+}
+```
+
+This describes a `method_definition` node that:
+- Has a required `body` field (always a `statement_block`)
+- May have zero or more `decorator` fields
+- Has a required `name` field (either `computed_property_name` or `property_identifier`)
+- Has a required `parameters` field (always `formal_parameters`)
+
+### Example with Children
+
+```json
+{
+  "type": "array",
+  "named": true,
+  "fields": {},
+  "children": {
+    "multiple": true,
+    "required": false,
+    "types": [
+      { "type": "_expression", "named": true },
+      { "type": "spread_element", "named": true }
+    ]
+  }
+}
+```
+
+This describes an `array` node that can contain zero or more children, where each child is either an `_expression` or a `spread_element`.
+
+## Supertype Nodes
+
+In Tree-sitter grammars, certain rules represent abstract **categories** of syntax nodes (e.g., "expression", "type", "declaration"). In the `grammar.js` file, these are often written as [hidden rules](/creating-parsers/writing-the-grammar#hiding-rules) whose definition is a simple `choice` where each member is just a single symbol.
+
+Normally, hidden rules don't appear in the node types file. But if you add a hidden rule to the grammar's [`supertypes` list](/creating-parsers/the-grammar-dsl), then it **will** show up in the node types file with a special entry:
+
+<ParamField path="subtypes" type="array">
+  An array of objects that specify the types of nodes this 'supertype' node can wrap.
+</ParamField>
+
+### Example
+
+```json
+{
+  "type": "_declaration",
+  "named": true,
+  "subtypes": [
+    { "type": "class_declaration", "named": true },
+    { "type": "function_declaration", "named": true },
+    { "type": "generator_function_declaration", "named": true },
+    { "type": "lexical_declaration", "named": true },
+    { "type": "variable_declaration", "named": true }
+  ]
+}
+```
+
+Supertype nodes also appear elsewhere in the node types file as children of other node types:
+
+```json
+{
+  "type": "export_statement",
+  "named": true,
+  "fields": {
+    "declaration": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        { "type": "_declaration", "named": true }
+      ]
+    },
+    "source": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        { "type": "string", "named": true }
+      ]
+    }
+  }
+}
+```
+
+<Tip>
+  Using supertypes makes the node types file much shorter and easier to read, because a single supertype takes the place of multiple subtypes.
+</Tip>
+
+## Using Node Types for Code Generation
+
+The `node-types.json` file can be used to generate type-safe bindings for your language. Here's an example of how you might process it:
+
+<CodeGroup>
+```python Python
+import json
+
+# Load node types
+with open('node-types.json') as f:
+    node_types = json.load(f)
+
+# Generate TypeScript types
+print('export type NodeType =')
+for i, node_type in enumerate(node_types):
+    if node_type['named']:
+        separator = '|' if i < len(node_types) - 1 else ';'
+        print(f"  | '{node_type['type']}' {separator}")
+```
+
+```javascript JavaScript
+const fs = require('fs');
+
+// Load node types
+const nodeTypes = JSON.parse(
+  fs.readFileSync('node-types.json', 'utf8')
+);
+
+// Generate a map of node types to their fields
+const fieldMap = new Map();
+
+for (const nodeType of nodeTypes) {
+  if (nodeType.fields) {
+    fieldMap.set(nodeType.type, Object.keys(nodeType.fields));
+  }
+}
+
+console.log('Node fields:', fieldMap);
+```
+
+```rust Rust
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+#[derive(Debug, Deserialize)]
+struct NodeType {
+    #[serde(rename = "type")]
+    node_type: String,
+    named: bool,
+    #[serde(default)]
+    fields: HashMap<String, ChildType>,
+    #[serde(default)]
+    children: Option<ChildType>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChildType {
+    multiple: bool,
+    required: bool,
+    types: Vec<TypeInfo>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TypeInfo {
+    #[serde(rename = "type")]
+    node_type: String,
+    named: bool,
+}
+
+fn main() {
+    let data = std::fs::read_to_string("node-types.json").unwrap();
+    let node_types: Vec<NodeType> = serde_json::from_str(&data).unwrap();
+    
+    // Process node types...
+    for node_type in node_types {
+        println!("{}: {} fields",
+                 node_type.node_type,
+                 node_type.fields.len());
+    }
+}
+```
+</CodeGroup>
+
+## Real-World Example
+
+Here's how the TypeScript parser for tree-sitter-typescript uses node types to generate TypeScript definitions:
+
+```typescript
+// Generated from node-types.json
+export type SyntaxNode =
+  | ProgramNode
+  | FunctionDeclarationNode
+  | ClassDeclarationNode
+  | VariableDeclarationNode
+  // ... more node types
+
+export interface FunctionDeclarationNode extends NamedNodeBase {
+  type: 'function_declaration';
+  nameNode: IdentifierNode;
+  parametersNode: FormalParametersNode;
+  bodyNode: StatementBlockNode;
+}
+
+export interface IdentifierNode extends NamedNodeBase {
+  type: 'identifier';
+  text: string;
+}
+
+// ... more interfaces
+```
+
+## Benefits of Using Node Types
+
+<CardGroup cols={2}>
+  <Card title="Type Safety" icon="shield-check">
+    Generate type-safe code that prevents runtime errors when working with syntax trees.
+  </Card>
+  
+  <Card title="IDE Support" icon="code">
+    Enable autocomplete and inline documentation in your IDE.
+  </Card>
+  
+  <Card title="Refactoring" icon="arrows-rotate">
+    Safely refactor code that works with syntax trees.
+  </Card>
+  
+  <Card title="Documentation" icon="book">
+    Auto-generate documentation about your grammar's structure.
+  </Card>
+</CardGroup>
+
+## Accessing Node Types at Runtime
+
+You can also access node type information programmatically:
+
+<CodeGroup>
+```c C
+const TSLanguage *language = tree_sitter_javascript();
+
+// Get the number of node types
+uint32_t symbol_count = ts_language_symbol_count(language);
+
+// Get the name of a specific node type
+for (uint32_t i = 0; i < symbol_count; i++) {
+  const char *name = ts_language_symbol_name(language, i);
+  TSSymbolType type = ts_language_symbol_type(language, i);
+  
+  if (type == TSSymbolTypeRegular) {
+    printf("Named node: %s\n", name);
+  } else if (type == TSSymbolTypeAnonymous) {
+    printf("Anonymous node: %s\n", name);
+  }
+}
+
+// Get field information
+uint32_t field_count = ts_language_field_count(language);
+for (uint32_t i = 1; i <= field_count; i++) {
+  const char *field_name = ts_language_field_name_for_id(language, i);
+  printf("Field: %s\n", field_name);
+}
+```
+
+```rust Rust
+let language = tree_sitter_javascript::language();
+
+// Get the number of node types
+let symbol_count = language.node_kind_count();
+
+// Get node type names
+for i in 0..symbol_count {
+    if let Some(name) = language.node_kind_for_id(i as u16) {
+        if language.node_kind_is_named(i as u16) {
+            println!("Named node: {}", name);
+        } else {
+            println!("Anonymous node: {}", name);
+        }
+    }
+}
+
+// Get field information
+let field_count = language.field_count();
+for i in 1..=field_count {
+    if let Some(field_name) = language.field_name_for_id(i as u16) {
+        println!("Field: {}", field_name);
+    }
+}
+```
+</CodeGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="ABI Versions" icon="code-branch" href="/using-parsers/abi-versions">
+    Learn about parser compatibility and ABI versioning
+  </Card>
+  
+  <Card title="Creating Parsers" icon="hammer" href="/creating-parsers/getting-started">
+    Build your own Tree-sitter parser
+  </Card>
+</CardGroup>

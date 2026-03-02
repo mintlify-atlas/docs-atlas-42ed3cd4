@@ -1,0 +1,152 @@
+---
+title: query
+description: Search files using a syntax tree query
+---
+
+The `query` command runs a query on a parser and views the results. It allows you to search through source code using Tree-sitter query syntax.
+
+```bash
+tree-sitter query [OPTIONS] <QUERY_PATH> [PATHS]...
+```
+
+**Aliases:** `q`
+
+## Query Path
+
+The required `QUERY_PATH` argument specifies the path to a file containing Tree-sitter query patterns.
+
+## Source Paths
+
+Optional `PATHS` arguments specify the source files to query. If no paths are provided, input is read from stdin.
+
+## Options
+
+### Input Options
+
+<ParamField path="--paths" type="file">
+  The path to a file that contains paths to source files in which the query will be executed.
+</ParamField>
+
+<ParamField path="-p, --grammar-path" type="path">
+  The path to the directory containing the grammar. Implies `--rebuild`.
+</ParamField>
+
+<ParamField path="-l, --lib-path" type="path">
+  The path to the parser's dynamic library. Used instead of the cached or automatically generated library.
+</ParamField>
+
+<ParamField path="--lang-name" type="string">
+  If `--lib-path` is used, the name of the language used to extract the library's language function.
+</ParamField>
+
+<ParamField path="--scope" type="scope">
+  The language scope to use for parsing and querying. Useful when the language is ambiguous.
+</ParamField>
+
+<ParamField path="-n, --test-number" type="number">
+  Query the contents of a specific test.
+</ParamField>
+
+### Query Range Options
+
+<ParamField path="--byte-range" type="start:end">
+  The range of byte offsets in which the query will be executed. Format: `start_byte:end_byte`.
+</ParamField>
+
+<ParamField path="--containing-byte-range" type="start:end">
+  The range of byte offsets in which the query will be executed. Only matches fully contained within the provided byte range will be returned.
+</ParamField>
+
+<ParamField path="--row-range" type="start:end">
+  The range of rows in which the query will be executed. Format: `start_row:end_row`.
+</ParamField>
+
+<ParamField path="--containing-row-range" type="start:end">
+  The range of rows in which the query will be executed. Only matches fully contained within the provided row range will be returned.
+</ParamField>
+
+### Output Options
+
+<ParamField path="-c, --captures" type="flag">
+  Order the query results by captures instead of matches.
+</ParamField>
+
+<ParamField path="-q, --quiet" type="flag">
+  Suppress main output.
+</ParamField>
+
+<ParamField path="-t, --time" type="flag">
+  Print the time taken to execute the query on the file.
+</ParamField>
+
+### Test Options
+
+<ParamField path="--test" type="flag">
+  Whether to run query tests or not.
+</ParamField>
+
+### Build Options
+
+<ParamField path="-r, --rebuild" type="flag">
+  Force a rebuild of the parser before executing the query.
+</ParamField>
+
+<ParamField path="--config-path" type="path">
+  The path to an alternative configuration (`config.json`) file. See [init-config](/cli/init-config).
+</ParamField>
+
+## Examples
+
+### Query a Single File
+
+```bash
+tree-sitter query queries/highlights.scm example.js
+```
+
+### Query Multiple Files
+
+```bash
+tree-sitter query queries/tags.scm src/**/*.js
+```
+
+### Query with Byte Range
+
+```bash
+tree-sitter query queries/highlights.scm example.js --byte-range 100:500
+```
+
+### Query with Row Range
+
+```bash
+tree-sitter query queries/highlights.scm example.js --row-range 10:20
+```
+
+### Show Captures Instead of Matches
+
+```bash
+tree-sitter query queries/highlights.scm example.js --captures
+```
+
+### Query and Measure Performance
+
+```bash
+tree-sitter query queries/highlights.scm example.js --time
+```
+
+### Query from File List
+
+```bash
+tree-sitter query queries/highlights.scm --paths file-list.txt
+```
+
+## Query Syntax
+
+Queries use a Lisp-like syntax to match patterns in syntax trees. Example:
+
+```scheme
+(function_declaration
+  name: (identifier) @function.name
+  parameters: (formal_parameters) @function.parameters)
+```
+
+For more information, see [Pattern Matching with Queries](https://tree-sitter.github.io/tree-sitter/using-parsers/queries).

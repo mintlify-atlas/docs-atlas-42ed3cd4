@@ -1,0 +1,388 @@
+---
+title: ABI Versioning
+description: Understanding parser compatibility and ABI version requirements
+---
+
+## Introduction
+
+Parsers generated with Tree-sitter have an associated **ABI (Application Binary Interface) version**, which establishes hard compatibility boundaries between the generated parser and the Tree-sitter library.
+
+A given version of the Tree-sitter library is only able to load parsers generated with supported ABI versions.
+
+## Current ABI Version
+
+The latest ABI version is defined in the Tree-sitter API:
+
+```c
+#define TREE_SITTER_LANGUAGE_VERSION 15
+#define TREE_SITTER_MIN_COMPATIBLE_LANGUAGE_VERSION 13
+```
+
+<CardGroup cols={2}>
+  <Card title="Latest ABI" icon="arrow-up">
+    **Version 15** - The latest ABI version supported by the current library
+  </Card>
+  
+  <Card title="Minimum ABI" icon="arrow-down">
+    **Version 13** - The earliest ABI version that can still be loaded
+  </Card>
+</CardGroup>
+
+<CodeGroup>
+```c C
+#include <tree_sitter/api.h>
+
+const TSLanguage *language = tree_sitter_json();
+uint32_t abi_version = ts_language_abi_version(language);
+
+printf("Parser ABI version: %u\n", abi_version);
+printf("Library supports: %u-%u\n",
+       TREE_SITTER_MIN_COMPATIBLE_LANGUAGE_VERSION,
+       TREE_SITTER_LANGUAGE_VERSION);
+
+if (abi_version < TREE_SITTER_MIN_COMPATIBLE_LANGUAGE_VERSION ||
+    abi_version > TREE_SITTER_LANGUAGE_VERSION) {
+    fprintf(stderr, "Incompatible ABI version!\n");
+}
+```
+
+```rust Rust
+use tree_sitter::{Language, LANGUAGE_VERSION, MIN_COMPATIBLE_LANGUAGE_VERSION};
+
+let language = tree_sitter_json::language();
+let abi_version = language.abi_version();
+
+println!("Parser ABI version: {}", abi_version);
+println!("Library supports: {}-{}",
+         MIN_COMPATIBLE_LANGUAGE_VERSION,
+         LANGUAGE_VERSION);
+
+if abi_version < MIN_COMPATIBLE_LANGUAGE_VERSION ||
+   abi_version > LANGUAGE_VERSION {
+    eprintln!("Incompatible ABI version!");
+}
+```
+
+```javascript JavaScript
+const Parser = require('tree-sitter');
+const JavaScript = require('tree-sitter-javascript');
+
+console.log('Tree-sitter version:', Parser.version);
+
+// Language version is typically checked automatically
+// when setting the language on a parser
+const parser = new Parser();
+try {
+  parser.setLanguage(JavaScript);
+  console.log('Language loaded successfully');
+} catch (err) {
+  console.error('Failed to load language:', err.message);
+}
+```
+</CodeGroup>
+
+## Compatibility Matrix
+
+The following table shows which ABI versions are supported by which Tree-sitter library versions:
+
+| Tree-sitter Version | Min Parser ABI | Max Parser ABI |
+|---------------------|----------------|----------------|
+| 0.14                | 9              | 9              |
+| ≥ 0.15.0, ≤ 0.15.7  | 9              | 10             |
+| ≥ 0.15.8, ≤ 0.16   | 9              | 11             |
+| 0.17, 0.18          | 9              | 12             |
+| ≥ 0.19, ≤ 0.20.2   | 13             | 13             |
+| ≥ 0.20.3, ≤ 0.24   | 13             | 14             |
+| ≥ 0.25              | 13             | 15             |
+
+<Note>
+  The Tree-sitter library is generally **backwards-compatible** with languages generated using older CLI versions, but is **not forwards-compatible**. You cannot use a parser with a newer ABI version than the library supports.
+</Note>
+
+## Checking Compatibility
+
+When setting a language on a parser, Tree-sitter automatically checks ABI compatibility:
+
+<CodeGroup>
+```c C
+#include <tree_sitter/api.h>
+
+TSParser *parser = ts_parser_new();
+const TSLanguage *language = tree_sitter_json();
+
+bool success = ts_parser_set_language(parser, language);
+
+if (!success) {
+    uint32_t abi_version = ts_language_abi_version(language);
+    fprintf(stderr,
+            "Error: Parser has ABI version %u, but library supports %u-%u\n",
+            abi_version,
+            TREE_SITTER_MIN_COMPATIBLE_LANGUAGE_VERSION,
+            TREE_SITTER_LANGUAGE_VERSION);
+    ts_parser_delete(parser);
+    return 1;
+}
+```
+
+```rust Rust
+use tree_sitter::{Parser, Language, LanguageError};
+
+let mut parser = Parser::new();
+let language = tree_sitter_json::language();
+
+match parser.set_language(&language) {
+    Ok(()) => {
+        println!("Language set successfully");
+    }
+    Err(LanguageError::Version(version)) => {
+        eprintln!("Incompatible ABI version: {}", version);
+    }
+    #[cfg(feature = "wasm")]
+    Err(LanguageError::Wasm) => {
+        eprintln!("Failed to load Wasm language");
+    }
+}
+```
+
+```javascript JavaScript
+const Parser = require('tree-sitter');
+const JavaScript = require('tree-sitter-javascript');
+
+const parser = new Parser();
+
+try {
+  parser.setLanguage(JavaScript);
+  console.log('Language loaded successfully');
+} catch (error) {
+  if (error.message.includes('version')) {
+    console.error('ABI version mismatch:', error.message);
+  } else {
+    console.error('Failed to load language:', error.message);
+  }
+}
+```
+</CodeGroup>
+
+## Generating Parsers with Specific ABI Versions
+
+By default, the Tree-sitter CLI will generate parsers using the latest available ABI for that version. However, you can select an older ABI using the `--abi` option:
+
+```bash
+# Generate a parser with ABI version 13
+tree-sitter generate --abi 13
+
+# Generate a parser with the default (latest) ABI
+tree-sitter generate
+```
+
+<Warning>
+  The ABI version range supported by the CLI can be smaller than for the library. When a new ABI version is released, older versions will be phased out over a deprecation period. During this period, you can still **load** parsers with the old ABI, but you can no longer **generate** parsers with it.
+</Warning>
+
+## When to Regenerate Parsers
+
+You should regenerate your parser when:
+
+<Steps>
+  <Step title="Upgrading Tree-sitter">
+    When you upgrade to a major or minor version of Tree-sitter that introduces a new ABI version, regenerate your parsers to take advantage of new features and optimizations.
+  </Step>
+  
+  <Step title="Supporting older libraries">
+    If you need your parser to work with older versions of the Tree-sitter library, generate it with an older ABI version using `--abi`.
+  </Step>
+  
+  <Step title="ABI compatibility errors">
+    If users report ABI version mismatch errors, you may need to regenerate your parser with a compatible ABI version.
+  </Step>
+</Steps>
+
+## ABI Version Changes
+
+ABI versions may change when Tree-sitter introduces:
+
+- **New language features** in the grammar DSL
+- **Changes to the generated parser structure**
+- **New runtime capabilities**
+- **Performance improvements** requiring structural changes
+
+<Accordion title="Major ABI changes">
+  Some notable ABI version changes:
+  
+  - **ABI 13** (Tree-sitter 0.19): Major rewrite of the runtime for improved performance
+  - **ABI 14** (Tree-sitter 0.20.3): Added support for language metadata
+  - **ABI 15** (Tree-sitter 0.25): Enhanced query capabilities and optimizations
+</Accordion>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Keep Libraries Updated" icon="arrow-up-right-dots">
+    Regularly update your Tree-sitter library to get the latest features and bug fixes.
+  </Card>
+  
+  <Card title="Document Requirements" icon="book-open">
+    Clearly document which Tree-sitter version your parser requires.
+  </Card>
+  
+  <Card title="Test Compatibility" icon="vial">
+    Test your parser with the minimum supported Tree-sitter version.
+  </Card>
+  
+  <Card title="Automate Regeneration" icon="robot">
+    Use CI/CD to automatically regenerate parsers when Tree-sitter is updated.
+  </Card>
+</CardGroup>
+
+## Package.json Example
+
+If you're publishing a parser as an npm package, specify the Tree-sitter version requirement:
+
+```json package.json
+{
+  "name": "tree-sitter-mylanguage",
+  "version": "1.0.0",
+  "main": "bindings/node",
+  "peerDependencies": {
+    "tree-sitter": "^0.25.0"
+  },
+  "devDependencies": {
+    "tree-sitter-cli": "^0.25.0"
+  },
+  "tree-sitter": [
+    {
+      "scope": "source.mylanguage",
+      "file-types": ["mylang"],
+      "highlights": "queries/highlights.scm"
+    }
+  ]
+}
+```
+
+## Cargo.toml Example
+
+For Rust projects, specify the version in `Cargo.toml`:
+
+```toml Cargo.toml
+[package]
+name = "tree-sitter-mylanguage"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+tree-sitter = "~0.25"
+tree-sitter-language = "~0.1"
+
+[build-dependencies]
+cc = "1.0"
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Error: Language version X is too old">
+    This means your parser was generated with an ABI version older than the minimum supported by the current Tree-sitter library.
+    
+    **Solution:** Regenerate your parser with the Tree-sitter CLI:
+    ```bash
+    tree-sitter generate
+    ```
+  </Accordion>
+  
+  <Accordion title="Error: Language version X is too new">
+    This means your parser was generated with an ABI version newer than what the current Tree-sitter library supports.
+    
+    **Solution:** Either:
+    1. Update your Tree-sitter library to a newer version
+    2. Regenerate the parser with an older ABI version:
+    ```bash
+    tree-sitter generate --abi 13
+    ```
+  </Accordion>
+  
+  <Accordion title="My parser works locally but not for users">
+    Users may have an older version of Tree-sitter installed.
+    
+    **Solution:** 
+    1. Check what Tree-sitter version your users have
+    2. Either ask users to upgrade, or regenerate with a compatible ABI:
+    ```bash
+    tree-sitter generate --abi 13
+    ```
+    3. Document the minimum required Tree-sitter version
+  </Accordion>
+  
+  <Accordion title="How do I check my parser's ABI version?">
+    You can check the ABI version programmatically or by looking at the generated `parser.c` file:
+    
+    ```c
+    // In parser.c
+    extern const TSLanguage *tree_sitter_mylanguage(void) {
+      static const TSLanguage language = {
+        .version = LANGUAGE_VERSION,  // This is the ABI version
+        // ...
+      };
+      return &language;
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Version Detection Script
+
+Here's a script to check ABI compatibility:
+
+```python check_abi.py
+import json
+import subprocess
+
+def check_parser_abi(parser_path):
+    # Get Tree-sitter library version
+    result = subprocess.run(
+        ['tree-sitter', '--version'],
+        capture_output=True,
+        text=True
+    )
+    lib_version = result.stdout.strip().split()[1]
+    
+    # Get parser ABI version (would need to parse parser.c)
+    print(f"Tree-sitter library version: {lib_version}")
+    print("Checking parser compatibility...")
+    
+    # Map library versions to supported ABI ranges
+    version_map = {
+        '0.25': (13, 15),
+        '0.24': (13, 14),
+        '0.23': (13, 14),
+        # ... more versions
+    }
+    
+    # Check compatibility
+    for lib_ver, (min_abi, max_abi) in version_map.items():
+        if lib_version.startswith(lib_ver):
+            print(f"Library supports ABI {min_abi}-{max_abi}")
+            break
+
+if __name__ == '__main__':
+    check_parser_abi('.')
+```
+
+## Further Reading
+
+<CardGroup cols={2}>
+  <Card title="Creating Parsers" icon="hammer" href="/creating-parsers/getting-started">
+    Learn how to create your own Tree-sitter parser
+  </Card>
+  
+  <Card title="CLI Documentation" icon="terminal" href="/cli/generate">
+    Read about the tree-sitter generate command
+  </Card>
+  
+  <Card title="Contributing" icon="code-pull-request" href="/contributing">
+    Contribute to Tree-sitter development
+  </Card>
+</CardGroup>
+
+<Note>
+  For the most up-to-date information about ABI versions, always check the [official Tree-sitter repository](https://github.com/tree-sitter/tree-sitter) and release notes.
+</Note>

@@ -1,0 +1,99 @@
+---
+title: build
+description: Compile a parser into a dynamically-loadable library
+---
+
+The `build` command compiles your parser into a dynamically-loadable library, either as a shared object (`.so`, `.dylib`, or `.dll`) or as a Wasm module.
+
+```bash
+tree-sitter build [OPTIONS] [PATH]
+```
+
+**Aliases:** `b`
+
+## Path Argument
+
+The optional path argument allows you to specify the directory of the parser to build. If not supplied, the CLI will attempt to build the parser in the current working directory.
+
+## Compiler Configuration
+
+You can customize the compilation process with environment variables:
+
+- **`CC`** - Change the compiler executable
+- **`CFLAGS`** - Add extra compiler flags
+- **`MACOSX_DEPLOYMENT_TARGET`** - Minimum macOS version (macOS only)
+- **`IPHONEOS_DEPLOYMENT_TARGET`** - Minimum iOS version (iOS only)
+
+## Symbol Validation
+
+On Unix platforms, the CLI uses `nm` to validate symbols in your parser library. This ensures:
+
+- All non-tree-sitter functions are marked `static` to avoid conflicts
+- If an external scanner is used, all required symbols are present:
+  - `tree_sitter_<name>_external_scanner_create`
+  - `tree_sitter_<name>_external_scanner_destroy`
+  - `tree_sitter_<name>_external_scanner_serialize`
+  - `tree_sitter_<name>_external_scanner_deserialize`
+  - `tree_sitter_<name>_external_scanner_scan`
+
+<Warning>
+  This safety check is not performed on Windows.
+</Warning>
+
+## Options
+
+<ParamField path="-w, --wasm" type="flag">
+  Compile the parser as a Wasm module. Requires the [Wasi SDK](https://github.com/WebAssembly/wasi-sdk) indicated by the `TREE_SITTER_WASI_SDK_PATH` environment variable.
+  
+  If you don't have the binary, the CLI will attempt to download it to `<CACHE_DIR>/tree-sitter/wasi-sdk/`, where `<CACHE_DIR>` follows [XDG base directory](https://specifications.freedesktop.org/basedir/latest/) or Windows [Known Folder](https://learn.microsoft.com/en-us/windows/win32/shell/knownfolderid) conventions.
+</ParamField>
+
+<ParamField path="-o, --output" type="path">
+  Specify where to output the shared object file (native or Wasm). Accepts either an absolute or relative path.
+  
+  If not supplied, the CLI will attempt to determine the language name based on the parent directory name. If that fails, it defaults to `parser`, generating `parser.so` or `parser.wasm` in the current directory.
+</ParamField>
+
+<ParamField path="--reuse-allocator" type="flag">
+  Reuse the allocator set in the core library for the parser's external scanner. Useful when the application overrides the default allocator and wants to ensure all parsers use it for external scanner allocations.
+</ParamField>
+
+<ParamField path="-0, --debug" type="flag">
+  Compile the parser with debug flags enabled. Useful when debugging issues with tools like `gdb` or `lldb`.
+</ParamField>
+
+<ParamField path="-v, --verbose" type="flag">
+  Display verbose build information including working directory, compiler, arguments, and environment variables.
+</ParamField>
+
+## Examples
+
+### Build Native Library
+
+```bash
+tree-sitter build
+```
+
+### Build Wasm Module
+
+```bash
+tree-sitter build --wasm
+```
+
+### Build with Custom Output
+
+```bash
+tree-sitter build --output /path/to/output.so
+```
+
+### Build with Debug Symbols
+
+```bash
+tree-sitter build --debug
+```
+
+### Build with Custom Compiler
+
+```bash
+CC=clang CFLAGS="-O3" tree-sitter build
+```

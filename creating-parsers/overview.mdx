@@ -1,0 +1,127 @@
+---
+title: Creating Parsers Overview
+description: Learn how to develop Tree-sitter grammars and create powerful parsers for programming languages
+---
+
+# Creating Parsers
+
+Developing Tree-sitter grammars can have a difficult learning curve, but once you get the hang of it, it can be fun and even zen-like. This guide will help you get started and develop a useful mental model for creating parsers.
+
+## What You'll Learn
+
+This section covers everything you need to know about creating Tree-sitter parsers:
+
+<CardGroup cols={2}>
+  <Card title="Getting Started" icon="rocket" href="/creating-parsers/getting-started">
+    Set up your development environment and create your first parser
+  </Card>
+  
+  <Card title="Grammar DSL" icon="code" href="/creating-parsers/grammar-dsl">
+    Master the grammar DSL functions and syntax
+  </Card>
+  
+  <Card title="Writing Grammar" icon="pen" href="/creating-parsers/writing-grammar">
+    Learn best practices for structuring your grammar rules
+  </Card>
+  
+  <Card title="External Scanners" icon="scanner" href="/creating-parsers/external-scanners">
+    Handle complex lexical rules with custom C code
+  </Card>
+  
+  <Card title="Testing" icon="flask" href="/creating-parsers/testing">
+    Write comprehensive tests for your parser
+  </Card>
+  
+  <Card title="Publishing" icon="upload" href="/creating-parsers/publishing">
+    Share your parser with the community
+  </Card>
+</CardGroup>
+
+## Key Concepts
+
+Before diving into parser development, it's important to understand a few key concepts:
+
+### Grammar Structure
+
+Tree-sitter grammars are written in JavaScript using a declarative DSL. Each grammar defines:
+
+- **Rules** - The structure of your language's syntax
+- **Tokens** - The terminal symbols (keywords, operators, literals)
+- **Extras** - Tokens that can appear anywhere (whitespace, comments)
+
+### Parse Trees
+
+Tree-sitter produces concrete syntax trees where:
+
+- Each node corresponds to a grammar symbol
+- The tree structure reflects your grammar's hierarchy
+- Nodes can have field names for easier navigation
+
+<Note>
+Tree-sitter's output is a concrete syntax tree (CST), not an abstract syntax tree (AST). This means every detail of the source code is preserved in the tree.
+</Note>
+
+### LR(1) Grammars
+
+Tree-sitter is based on the GLR parsing algorithm but works most efficiently with LR(1) grammars. This means:
+
+- The parser can look ahead one token to make decisions
+- Most conflicts can be resolved with precedence and associativity
+- Some ambiguities can be explicitly declared
+
+<Warning>
+Tree-sitter grammars are similar to Yacc/Bison grammars but different from ANTLR or PEG grammars. You'll likely need to adjust existing grammars when porting them to Tree-sitter.
+</Warning>
+
+## Development Workflow
+
+A typical workflow for developing a Tree-sitter parser:
+
+<Steps>
+  <Step title="Set up your project">
+    Use `tree-sitter init` to create the initial project structure with a `grammar.js` file.
+  </Step>
+  
+  <Step title="Define basic rules">
+    Start with the top-level structure and gradually add more detailed rules.
+  </Step>
+  
+  <Step title="Write tests">
+    Create tests in `test/corpus/` for each rule as you add them.
+  </Step>
+  
+  <Step title="Generate and test">
+    Run `tree-sitter generate` to create the parser, then `tree-sitter test` to verify it works.
+  </Step>
+  
+  <Step title="Iterate">
+    Refine your grammar, fix conflicts, and add more features incrementally.
+  </Step>
+</Steps>
+
+## Why Tree-sitter?
+
+Tree-sitter parsers offer several advantages:
+
+- **Incremental parsing** - Only re-parse changed portions of the document
+- **Error recovery** - Continue parsing even with syntax errors
+- **Performance** - Fast enough for real-time editing in text editors
+- **Language agnostic** - Generate bindings for multiple programming languages
+- **Query system** - Powerful pattern matching for syntax highlighting and analysis
+
+<Tip>
+Start small and build incrementally. Don't try to implement the entire language specification at once. Focus on getting a working parser for a subset of the language first.
+</Tip>
+
+## Prerequisites
+
+Before you begin, you should have:
+
+- Basic understanding of context-free grammars
+- Familiarity with JavaScript (for writing grammars)
+- Knowledge of C (for external scanners, if needed)
+- A language specification or documentation for the language you're parsing
+
+## Next Steps
+
+Ready to get started? Continue to [Getting Started](/creating-parsers/getting-started) to set up your development environment and create your first parser.

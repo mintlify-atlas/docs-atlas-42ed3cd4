@@ -1,0 +1,217 @@
+---
+title: fuzz
+description: Fuzz a parser to find bugs and ensure consistency
+---
+
+The `fuzz` command tests a parser by performing random edits and ensuring that undoing these edits results in consistent parse trees.
+
+```bash
+tree-sitter fuzz [OPTIONS]
+```
+
+**Aliases:** `f`
+
+## How It Works
+
+The fuzzer:
+
+1. Parses test files from your corpus
+2. Applies random edits to the source code
+3. Re-parses the edited code
+4. Undoes the edits
+5. Verifies the parse tree matches the original
+
+The test fails if:
+- Parse trees are not equal after undoing edits
+- Changed ranges are inconsistent
+- The parser crashes or hangs
+
+## Options
+
+### Test Selection
+
+<ParamField path="-s, --skip" type="names">
+  A list of test names to skip fuzzing. Can be specified multiple times.
+</ParamField>
+
+<ParamField path="-i, --include" type="regex">
+  Only fuzz corpus test cases whose names match this regex.
+</ParamField>
+
+<ParamField path="-e, --exclude" type="regex">
+  Skip corpus test cases whose names match this regex.
+</ParamField>
+
+### Parser Options
+
+<ParamField path="-p, --grammar-path" type="path">
+  The path to the directory containing the grammar. Implies `--rebuild`.
+</ParamField>
+
+<ParamField path="--lib-path" type="path">
+  The path to the parser's dynamic library. Used instead of the cached or automatically generated library.
+</ParamField>
+
+<ParamField path="--lang-name" type="string">
+  If `--lib-path` is used, the name of the language used to extract the library's language function.
+</ParamField>
+
+<ParamField path="--subdir" type="path">
+  The directory containing the parser. Primarily useful in multi-language repositories.
+</ParamField>
+
+### Fuzzing Parameters
+
+<ParamField path="--edits" type="number" default="3">
+  The maximum number of edits to perform per fuzz test.
+  
+  Can also be set via the `TREE_SITTER_EDITS` environment variable.
+</ParamField>
+
+<ParamField path="--iterations" type="number" default="10">
+  The number of iterations to run per test.
+  
+  Can also be set via the `TREE_SITTER_ITERATIONS` environment variable.
+</ParamField>
+
+### Debug Options
+
+<ParamField path="-l, --log" type="flag">
+  Output parsing and lexing logs to stderr.
+</ParamField>
+
+<ParamField path="--log-graphs" type="flag">
+  Output logs of the graphs of the stack and parse trees during parsing. Graphs are constructed with [graphviz dot](https://graphviz.org/doc/info/lang.html), and output is written to `log.html`.
+</ParamField>
+
+### Build Options
+
+<ParamField path="-r, --rebuild" type="flag">
+  Force a rebuild of the parser before running the fuzzer.
+</ParamField>
+
+## Examples
+
+### Basic Fuzzing
+
+```bash
+tree-sitter fuzz
+```
+
+### Fuzz with More Iterations
+
+```bash
+tree-sitter fuzz --iterations 100 --edits 5
+```
+
+### Fuzz Specific Tests
+
+```bash
+tree-sitter fuzz --include "function"
+```
+
+### Skip Problematic Tests
+
+```bash
+tree-sitter fuzz --skip "complex_expression" --skip "nested_blocks"
+```
+
+### Fuzz with Debug Logging
+
+```bash
+tree-sitter fuzz --log --log-graphs
+```
+
+### Fuzz with Environment Variables
+
+```bash
+TREE_SITTER_EDITS=10 TREE_SITTER_ITERATIONS=50 tree-sitter fuzz
+```
+
+## Best Practices
+
+### Start Small
+
+Begin with few iterations and edits, then increase:
+
+```bash
+tree-sitter fuzz --iterations 10 --edits 3
+```
+
+### Focus on Problem Areas
+
+Use `--include` to focus on specific language constructs:
+
+```bash
+tree-sitter fuzz --include "string|comment"
+```
+
+### Regular Fuzzing
+
+Incorporate fuzzing into your development workflow:
+
+```bash
+# After making grammar changes
+tree-sitter generate
+tree-sitter test
+tree-sitter fuzz --iterations 20
+```
+
+### CI Integration
+
+Add fuzzing to your CI pipeline:
+
+```yaml
+# .github/workflows/test.yml
+- name: Fuzz parser
+  run: tree-sitter fuzz --iterations 50
+```
+
+## Interpreting Results
+
+### Success
+
+If all tests pass, you'll see:
+
+```
+Fuzz test passed for all corpus tests
+```
+
+### Failure
+
+If a test fails, you'll see:
+
+- The test name that failed
+- The edit sequence that caused the failure
+- Details about the inconsistency
+
+Use this information to:
+1. Reproduce the issue manually
+2. Add a regression test
+3. Fix the grammar or external scanner
+
+## Troubleshooting
+
+### Fuzzing Takes Too Long
+
+Reduce iterations or edits:
+
+```bash
+tree-sitter fuzz --iterations 5 --edits 2
+```
+
+### Tests Hang
+
+Some inputs may cause infinite loops. Use `--skip` to bypass:
+
+```bash
+tree-sitter fuzz --skip "problematic_test"
+```
+
+### Inconsistent Failures
+
+Fuzzing is random, so failures may not reproduce. To help:
+
+1. Note the seed value if displayed
+2. Run multiple times to confirm
+3. Add logging to understand the issue

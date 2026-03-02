@@ -1,0 +1,389 @@
+---
+title: Parser
+description: API reference for the Parser struct
+---
+
+The `Parser` is a stateful object used to produce a `Tree` from source code.
+
+## Constructor
+
+### new
+
+```rust
+pub fn new() -> Self
+```
+
+Create a new parser.
+
+```rust
+use tree_sitter::Parser;
+
+let mut parser = Parser::new();
+```
+
+## Configuration
+
+### set_language
+
+```rust
+pub fn set_language(&mut self, language: &Language) -> Result<(), LanguageError>
+```
+
+Set the language that the parser should use for parsing.
+
+<ParamField path="language" type="&Language" required>
+  The language to use for parsing
+</ParamField>
+
+**Returns:** `Ok(())` if the language was successfully assigned, or `Err(LanguageError)` if there was a version mismatch.
+
+```rust
+parser.set_language(&tree_sitter_rust::LANGUAGE.into())
+    .expect("Error loading Rust grammar");
+```
+
+### language
+
+```rust
+pub fn language(&self) -> Option<LanguageRef<'_>>
+```
+
+Get the parser's current language.
+
+**Returns:** `Some(LanguageRef)` if a language is set, or `None` if no language has been assigned.
+
+### set_included_ranges
+
+```rust
+pub fn set_included_ranges(&mut self, ranges: &[Range]) -> Result<(), IncludedRangesError>
+```
+
+Set the ranges of text that the parser should include when parsing. By default, the parser will always include entire documents. This function allows you to parse only a portion of a document but still return a syntax tree whose ranges match up with the document as a whole.
+
+<ParamField path="ranges" type="&[Range]" required>
+  The ranges to parse. Must be ordered from earliest to latest and non-overlapping.
+</ParamField>
+
+**Returns:** `Ok(())` if the ranges were valid, or `Err(IncludedRangesError)` with the index of the first invalid range.
+
+### included_ranges
+
+```rust
+pub fn included_ranges(&self) -> Vec<Range>
+```
+
+Get the ranges of text that the parser will include when parsing.
+
+## Parsing Methods
+
+### parse
+
+```rust
+pub fn parse(&mut self, text: impl AsRef<[u8]>, old_tree: Option<&Tree>) -> Option<Tree>
+```
+
+Parse a slice of UTF8 text.
+
+<ParamField path="text" type="impl AsRef<[u8]>" required>
+  The UTF8-encoded text to parse
+</ParamField>
+
+<ParamField path="old_tree" type="Option<&Tree>">
+  A previous syntax tree parsed from the same document. If the text has changed since `old_tree` was created, you must edit `old_tree` to match the new text using `Tree::edit`.
+</ParamField>
+
+**Returns:** A `Tree` if parsing succeeded, or `None` if the parser has not yet had a language assigned.
+
+```rust
+let source_code = "fn test() {}";
+let tree = parser.parse(source_code, None).unwrap();
+let root_node = tree.root_node();
+```
+
+### parse_with_options
+
+```rust
+pub fn parse_with_options<T: AsRef<[u8]>, F: FnMut(usize, Point) -> T>(
+    &mut self,
+    callback: &mut F,
+    old_tree: Option<&Tree>,
+    options: Option<ParseOptions>,
+) -> Option<Tree>
+```
+
+Parse text provided in chunks by a callback.
+
+<ParamField path="callback" type="&mut F" required>
+  A function that takes a byte offset and position and returns a slice of UTF8-encoded text starting at that byte offset and position
+</ParamField>
+
+<ParamField path="old_tree" type="Option<&Tree>">
+  A previous syntax tree parsed from the same document
+</ParamField>
+
+<ParamField path="options" type="Option<ParseOptions>">
+  Options for parsing, such as a progress callback
+</ParamField>
+
+```rust
+let lines = &[
+    "pub fn foo() {",
+    "  1",
+    "}",
+];
+
+let tree = parser.parse_with(&mut |_byte: usize, position: Point| -> &[u8] {
+    let row = position.row as usize;
+    let column = position.column as usize;
+    if row < lines.len() {
+        if column < lines[row].as_bytes().len() {
+            &lines[row].as_bytes()[column..]
+        } else {
+            b"\n"
+        }
+    } else {
+        &[]
+    }
+}, None, None).unwrap();
+```
+
+### parse_utf16_le
+
+```rust
+pub fn parse_utf16_le(
+    &mut self,
+    input: impl AsRef<[u16]>,
+    old_tree: Option<&Tree>,
+) -> Option<Tree>
+```
+
+Parse a slice of UTF16 little-endian text.
+
+<ParamField path="input" type="impl AsRef<[u16]>" required>
+  The UTF16-encoded text to parse
+</ParamField>
+
+<ParamField path="old_tree" type="Option<&Tree>">
+  A previous syntax tree parsed from the same document
+</ParamField>
+
+### parse_utf16_be
+
+```rust
+pub fn parse_utf16_be(
+    &mut self,
+    input: impl AsRef<[u16]>,
+    old_tree: Option<&Tree>,
+) -> Option<Tree>
+```
+
+Parse a slice of UTF16 big-endian text.
+
+<ParamField path="input" type="impl AsRef<[u16]>" required>
+  The UTF16-encoded text to parse
+</ParamField>
+
+<ParamField path="old_tree" type="Option<&Tree>">
+  A previous syntax tree parsed from the same document
+</ParamField>
+
+### parse_custom_encoding
+
+```rust
+pub fn parse_custom_encoding<D: Decode, T: AsRef<[u8]>, F: FnMut(usize, Point) -> T>(
+    &mut self,
+    callback: &mut F,
+    old_tree: Option<&Tree>,
+    options: Option<ParseOptions>,
+) -> Option<Tree>
+```
+
+Parse text provided in chunks by a callback using a custom encoding. This is useful for parsing text in encodings that are not UTF-8 or UTF-16.
+
+<ParamField path="D" type="Decode" required>
+  A type that implements the `Decode` trait to decode the custom encoding
+</ParamField>
+
+<ParamField path="callback" type="&mut F" required>
+  A function that takes a byte offset and position and returns a slice of text
+</ParamField>
+
+<ParamField path="old_tree" type="Option<&Tree>">
+  A previous syntax tree parsed from the same document
+</ParamField>
+
+<ParamField path="options" type="Option<ParseOptions>">
+  Options for parsing
+</ParamField>
+
+## State Management
+
+### reset
+
+```rust
+pub fn reset(&mut self)
+```
+
+Instruct the parser to start the next parse from the beginning. If the parser previously failed because of a callback, then by default, it will resume where it left off on the next call to `parse`. If you don't want to resume, and instead intend to use this parser to parse some other document, you must call `reset` first.
+
+## Logging and Debugging
+
+### set_logger
+
+```rust
+pub fn set_logger(&mut self, logger: Option<Logger>)
+```
+
+Set the logging callback that the parser should use during parsing.
+
+<ParamField path="logger" type="Option<Logger>">
+  A boxed closure that receives log messages. Set to `None` to disable logging.
+</ParamField>
+
+```rust
+parser.set_logger(Some(Box::new(|log_type, message| {
+    println!("[{:?}] {}", log_type, message);
+})));
+```
+
+### logger
+
+```rust
+pub fn logger(&self) -> Option<&Logger>
+```
+
+Get the parser's current logger.
+
+### print_dot_graphs
+
+```rust
+#[cfg(feature = "std")]
+pub fn print_dot_graphs(&mut self, file: &impl AsRawFd)
+```
+
+Set the destination to which the parser should write debugging graphs during parsing. The graphs are formatted in the DOT language. You may want to pipe these graphs directly to a `dot(1)` process in order to generate SVG output.
+
+<Note>
+This method is only available on Unix platforms with the `std` feature enabled.
+</Note>
+
+### stop_printing_dot_graphs
+
+```rust
+#[cfg(feature = "std")]
+pub fn stop_printing_dot_graphs(&mut self)
+```
+
+Stop the parser from printing debugging graphs while parsing.
+
+## Parse Options
+
+### ParseOptions
+
+```rust
+pub struct ParseOptions<'a> {
+    pub progress_callback: Option<ParseProgressCallback<'a>>,
+}
+```
+
+Options for parsing text.
+
+#### new
+
+```rust
+pub fn new() -> Self
+```
+
+Create new parse options with default values.
+
+#### progress_callback
+
+```rust
+pub fn progress_callback<F: FnMut(&ParseState) -> ControlFlow<()>>(
+    mut self,
+    callback: &'a mut F,
+) -> Self
+```
+
+Set a progress callback that will be called periodically during parsing.
+
+<ParamField path="callback" type="&'a mut F" required>
+  A callback that receives the current parse state and returns `ControlFlow::Continue(())` to continue parsing or `ControlFlow::Break(())` to abort
+</ParamField>
+
+```rust
+let mut progress_count = 0;
+let options = ParseOptions::new().progress_callback(&mut |state| {
+    progress_count += 1;
+    if state.has_error() {
+        ControlFlow::Break(())
+    } else {
+        ControlFlow::Continue(())
+    }
+});
+
+let tree = parser.parse_with_options(&mut callback, None, Some(options));
+```
+
+## Examples
+
+### Basic Parsing
+
+```rust
+use tree_sitter::Parser;
+
+let mut parser = Parser::new();
+parser.set_language(&tree_sitter_rust::LANGUAGE.into())
+    .expect("Error loading Rust grammar");
+
+let source_code = "fn test() {}";
+let tree = parser.parse(source_code, None).unwrap();
+let root_node = tree.root_node();
+
+assert_eq!(root_node.kind(), "source_file");
+```
+
+### Incremental Parsing
+
+```rust
+let source_code = "fn test() {}";
+let mut tree = parser.parse(source_code, None).unwrap();
+
+// Edit the tree
+tree.edit(&InputEdit {
+    start_byte: 8,
+    old_end_byte: 8,
+    new_end_byte: 14,
+    start_position: Point::new(0, 8),
+    old_end_position: Point::new(0, 8),
+    new_end_position: Point::new(0, 14),
+});
+
+// Parse with the edited tree for better performance
+let new_source_code = "fn test(a: u32) {}";
+let new_tree = parser.parse(new_source_code, Some(&tree)).unwrap();
+```
+
+### Parsing with Callbacks
+
+```rust
+let lines = &[
+    "pub fn foo() {",
+    "  1",
+    "}",
+];
+
+let tree = parser.parse_with(&mut |_byte: usize, position: Point| -> &[u8] {
+    let row = position.row as usize;
+    let column = position.column as usize;
+    if row < lines.len() {
+        if column < lines[row].as_bytes().len() {
+            &lines[row].as_bytes()[column..]
+        } else {
+            b"\n"
+        }
+    } else {
+        &[]
+    }
+}, None, None).unwrap();
+```

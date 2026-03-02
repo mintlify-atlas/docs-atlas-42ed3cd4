@@ -1,0 +1,122 @@
+---
+title: generate
+description: Generate a parser from a grammar
+---
+
+The most important command for grammar development. It reads the grammar and outputs C files that can be compiled into a shared or static library.
+
+```bash
+tree-sitter generate [OPTIONS] [GRAMMAR_PATH]
+```
+
+**Aliases:** `gen`, `g`
+
+## Grammar Path
+
+The optional `GRAMMAR_PATH` argument should point to the structured grammar in one of two forms:
+
+- **`grammar.js`** - A JavaScript file (ESM or CJS). If omitted, defaults to `./grammar.js`.
+- **`grammar.json`** - A structured representation created as a byproduct of `generate`. Can regenerate a missing `parser.c` without requiring a JavaScript runtime.
+
+## Conflict Detection
+
+If there is an ambiguity or local ambiguity in your grammar, Tree-sitter will detect it during parser generation and exit with an `Unresolved conflict` error message.
+
+See [Structuring Rules Well](https://tree-sitter.github.io/tree-sitter/creating-parsers/writing-the-grammar#structuring-rules-well) for information on handling conflicts.
+
+## Generated Files
+
+### src/parser.c
+Implements the parser logic specified in the grammar.
+
+### src/tree_sitter/parser.h
+Provides basic C definitions used in the generated `parser.c` file.
+
+### src/tree_sitter/alloc.h
+Provides memory allocation macros that can be used in an external scanner.
+
+### src/tree_sitter/array.h
+Provides array macros that can be used in an external scanner.
+
+### src/grammar.json
+Contains a structured representation of the grammar. Can regenerate the parser without re-evaluating `grammar.js`.
+
+### src/node-types.json
+Provides type information about individual syntax nodes. See [Static Node Types](https://tree-sitter.github.io/tree-sitter/using-parsers/static-node-types).
+
+## Options
+
+<ParamField path="-l, --log" type="flag">
+  Print the log of the parser generation process. Includes information about tokens in error recovery state, extracted keywords, state splits, and entry point state.
+</ParamField>
+
+<ParamField path="--abi" type="version">
+  The ABI version to use for parser generation. Default is ABI 15, with ABI 14 being a supported target. Use `latest` to generate the newest supported version.
+  
+  Can also be set via `TREE_SITTER_ABI_VERSION` environment variable.
+</ParamField>
+
+<ParamField path="--no-parser" type="flag">
+  Only generate `grammar.json` and `node-types.json` without generating the parser.
+</ParamField>
+
+<ParamField path="-o, --output" type="directory">
+  The directory to place the generated parser in. Default is `src/` in the current directory.
+</ParamField>
+
+<ParamField path="--report-states-for-rule" type="rule">
+  Print the overview of states from the given rule. Useful for debugging and understanding the generated parser's item sets.
+  
+  - Pass `-` to view state count numbers for all rules
+  - Pass `*` to view the overview of states for every rule
+</ParamField>
+
+<ParamField path="--json-summary" type="flag">
+  Report conflicts in a JSON format.
+</ParamField>
+
+<ParamField path="--js-runtime" type="executable" default="node">
+  Path to the JavaScript runtime executable to use when generating the parser.
+  
+  Can also be set via `TREE_SITTER_JS_RUNTIME` environment variable.
+  
+  Starting from version 0.26, you can pass `native` to use the experimental native QuickJS runtime bundled with the CLI. This avoids the Node.js dependency entirely.
+  
+  The native QuickJS runtime is compatible with ESM and CommonJS in strict mode. If your grammar depends on npm packages, run `npm install` before using the native runtime.
+</ParamField>
+
+<ParamField path="--disable-optimizations" type="flag">
+  Disable optimizations when generating the parser. Currently only affects the merging of compatible parse states.
+</ParamField>
+
+## Examples
+
+### Basic Generation
+
+```bash
+tree-sitter generate
+```
+
+### Generate with Debug Logging
+
+```bash
+tree-sitter generate --log
+```
+
+### Generate for Specific ABI
+
+```bash
+tree-sitter generate --abi 14
+```
+
+### Use Native JavaScript Runtime
+
+```bash
+tree-sitter generate --js-runtime native
+```
+
+### Generate Only Metadata
+
+```bash
+tree-sitter generate --no-parser
+```

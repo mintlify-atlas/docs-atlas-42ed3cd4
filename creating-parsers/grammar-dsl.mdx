@@ -1,0 +1,588 @@
+---
+title: Grammar DSL Reference
+description: Complete reference for Tree-sitter's grammar definition language
+---
+
+# Grammar DSL
+
+The Tree-sitter grammar DSL provides a set of built-in functions for defining grammar rules. This page documents all available functions and grammar properties.
+
+## Core Concepts
+
+### The `$` Symbol
+
+Every grammar rule is written as a JavaScript function that takes a parameter conventionally called `$`. Use `$.identifier` to refer to another grammar symbol within a rule.
+
+```javascript
+rules: {
+  function_call: $ => seq(
+    $.identifier,      // Reference to another rule
+    '(',
+    optional($.arguments),
+    ')'
+  )
+}
+```
+
+<Warning>
+Avoid names starting with `$.MISSING` or `$.UNEXPECTED` as they have special meaning for the `tree-sitter test` command.
+</Warning>
+
+### Terminal Symbols
+
+Terminal symbols are described using JavaScript strings and regular expressions.
+
+<CodeGroup>
+```javascript Strings
+rules: {
+  if_statement: $ => seq(
+    'if',              // Exact string match
+    '(',
+    $.expression,
+    ')'
+  )
+}
+```
+
+```javascript Regular Expressions
+rules: {
+  identifier: $ => /[a-z_][a-z0-9_]*/i,
+  number: $ => /\d+/,
+  whitespace: $ => /\s+/
+}
+```
+
+```javascript Rust Regex
+import { RustRegex } from 'tree-sitter-cli/dsl';
+
+rules: {
+  // Case-insensitive identifier using inline flag
+  identifier: $ => new RustRegex('(?i)[a-z_][a-z0-9_]*')
+}
+```
+</CodeGroup>
+
+<Note>
+Tree-sitter doesn't use JavaScript's regex engine at runtime. It generates regex-matching logic based on Rust regex syntax as part of the parser.
+</Note>
+
+## Rule Functions
+
+### `seq()` - Sequences
+
+Matches rules in order, one after another.
+
+```javascript
+rules: {
+  variable_declaration: $ => seq(
+    'let',
+    $.identifier,
+    '=',
+    $.expression,
+    ';'
+  )
+}
+```
+
+**Analogous to**: Writing symbols next to each other in EBNF notation
+
+### `choice()` - Alternatives
+
+Matches one of a set of possible rules.
+
+```javascript
+rules: {
+  expression: $ => choice(
+    $.identifier,
+    $.number,
+    $.string,
+    $.binary_expression,
+    $.unary_expression
+  )
+}
+```
+
+<Tip>
+The order of arguments does not matter for parsing, but it affects the order in which alternatives are tried during error recovery.
+</Tip>
+
+**Analogous to**: The `|` (pipe) operator in EBNF notation
+
+### `repeat()` - Zero or More
+
+Matches zero or more occurrences of a rule.
+
+```javascript
+rules: {
+  // A block contains zero or more statements
+  block: $ => seq(
+    '{',
+    repeat($.statement),
+    '}'
+  )
+}
+```
+
+**Analogous to**: The `{x}` (curly brace) syntax in EBNF notation
+
+### `repeat1()` - One or More
+
+Matches one or more occurrences of a rule.
+
+```javascript
+rules: {
+  // At least one digit
+  number: $ => repeat1(/[0-9]/),
+  
+  // At least one parameter
+  parameter_list: $ => seq(
+    '(',
+    repeat1($.parameter),
+    ')'
+  )
+}
+```
+
+**Analogous to**: The `+` operator in regex or EBNF
+
+### `optional()` - Zero or One
+
+Matches zero or one occurrence of a rule.
+
+```javascript
+rules: {
+  function_declaration: $ => seq(
+    'function',
+    $.identifier,
+    optional($.type_parameters),  // Type params are optional
+    $.parameter_list,
+    optional($.return_type),      // Return type is optional
+    $.block
+  )
+}
+```
+
+**Analogous to**: The `[x]` (square bracket) syntax in EBNF notation
+
+## Precedence Functions
+
+### `prec()` - Numeric Precedence
+
+Assigns a numerical precedence to resolve LR(1) conflicts.
+
+```javascript
+rules: {
+  expression: $ => choice(
+    $.unary_expression,
+    $.binary_expression
+  ),
+  
+  // Higher precedence (2) means it binds more tightly
+  unary_expression: $ => prec(2, seq(
+    choice('-', '!', '~'),
+    $.expression
+  )),
+  
+  binary_expression: $ => prec(1, seq(
+    $.expression,
+    choice('+', '-', '*', '/'),
+    $.expression
+  ))
+}
+```
+
+<Note>
+The default precedence of all rules is zero. Higher numbers = higher precedence.
+</Note>
+
+### `prec.left()` - Left Associativity
+
+Marks a rule as left-associative, optionally with precedence.
+
+```javascript
+rules: {
+  binary_expression: $ => choice(
+    // a * b * c → (a * b) * c
+    prec.left(2, seq($.expression, '*', $.expression)),
+    prec.left(2, seq($.expression, '/', $.expression)),
+    prec.left(1, seq($.expression, '+', $.expression)),
+    prec.left(1, seq($.expression, '-', $.expression))
+  )
+}
+```
+
+**Effect**: When parsing `a + b + c`, prefer matching `(a + b) + c` over `a + (b + c)`
+
+### `prec.right()` - Right Associativity
+
+Marks a rule as right-associative.
+
+```javascript
+rules: {
+  // Assignment is right-associative
+  assignment: $ => prec.right(seq(
+    $.identifier,
+    '=',
+    choice($.expression, $.assignment)
+  ))
+}
+```
+
+**Effect**: When parsing `a = b = c`, prefer matching `a = (b = c)` over `(a = b) = c`
+
+### `prec.dynamic()` - Dynamic Precedence
+
+Applies precedence at runtime instead of parser generation time.
+
+```javascript
+grammar({
+  name: 'mylang',
+  
+  conflicts: $ => [
+    [$.array, $.array_pattern]
+  ],
+  
+  rules: {
+    // In case of ambiguity, prefer array over array_pattern
+    array: $ => prec.dynamic(1, seq(
+      '[',
+      optional(seq($.expression, repeat(seq(',', $.expression)))),
+      ']'
+    )),
+    
+    array_pattern: $ => seq(
+      '[',
+      optional(seq($.pattern, repeat(seq(',', $.pattern)))),
+      ']'
+    )
+  }
+})
+```
+
+<Warning>
+Only use `prec.dynamic()` when handling genuine ambiguities declared in the `conflicts` field.
+</Warning>
+
+## Token Functions
+
+### `token()` - Single Token
+
+Marks a rule as producing a single token.
+
+```javascript
+rules: {
+  // Treat the entire sequence as one token
+  comment: $ => token(seq(
+    '//',
+    /.*/
+  )),
+  
+  // Multi-line comment as a single token
+  block_comment: $ => token(seq(
+    '/*',
+    /[^*]*\*+([^/*][^*]*\*+)*/,
+    '/'
+  ))
+}
+```
+
+<Note>
+The `token()` function only accepts terminal rules (strings/regexes). `token($.foo)` will not work unless `$.foo` is a terminal.
+</Note>
+
+### `token.immediate()` - No Whitespace
+
+Matches a token only if there is no whitespace before it.
+
+```javascript
+rules: {
+  // Template literal with interpolation
+  template_string: $ => seq(
+    '`',
+    repeat(choice(
+      $.template_chars,
+      seq(
+        '${',
+        $.expression,
+        token.immediate('}'  // No whitespace before }
+      )
+    )),
+    '`'
+  )
+}
+```
+
+**Use case**: When whitespace would change the meaning of the token
+
+## Naming Functions
+
+### `alias()` - Rename Nodes
+
+Causes a rule to appear with a different name in the syntax tree.
+
+<CodeGroup>
+```javascript Named Node Alias
+rules: {
+  statement: $ => choice(
+    $.if_statement,
+    $.while_statement,
+    // Make 'for' appear as 'for_statement'
+    alias('for', $.for_statement)
+  )
+}
+```
+
+```javascript Anonymous Node Alias
+rules: {
+  // Make this_keyword appear as the string 'this'
+  this_expression: $ => alias($.this_keyword, 'this')
+}
+```
+</CodeGroup>
+
+### `field()` - Named Fields
+
+Assigns a field name to child nodes for easier access.
+
+```javascript
+rules: {
+  function_definition: $ => seq(
+    'func',
+    field('name', $.identifier),
+    field('parameters', $.parameter_list),
+    field('return_type', optional($.type)),
+    field('body', $.block)
+  ),
+  
+  binary_expression: $ => seq(
+    field('left', $.expression),
+    field('operator', choice('+', '-', '*', '/')),
+    field('right', $.expression)
+  )
+}
+```
+
+<Tip>
+Use fields to make tree traversal code more readable and resilient to grammar changes.
+</Tip>
+
+### `reserved()` - Contextual Keywords
+
+Overrides the global reserved word set for contextual keywords.
+
+```javascript
+grammar({
+  name: 'javascript',
+  
+  reserved: $ => ({
+    keywords: ['if', 'else', 'function', 'return'],
+    property_keywords: []  // Empty set for property names
+  }),
+  
+  rules: {
+    // 'if' is reserved here
+    variable: $ => $.identifier,
+    
+    // 'if' is allowed as a property name
+    property_name: $ => reserved(
+      $.property_keywords,
+      choice($.identifier, 'if', 'else')
+    )
+  }
+})
+```
+
+## Grammar Properties
+
+### `name`
+
+The name of your language (required).
+
+```javascript
+export default grammar({
+  name: 'javascript',
+  // ...
+});
+```
+
+### `rules`
+
+The grammar rules (required). The first rule is the start symbol.
+
+```javascript
+rules: {
+  source_file: $ => repeat($._statement),  // Start rule
+  _statement: $ => choice(/* ... */),
+  // ...
+}
+```
+
+### `extras`
+
+Tokens that may appear anywhere in the language.
+
+```javascript
+extras: $ => [
+  /\s/,           // Whitespace
+  $.comment,      // Comments
+  $.line_continuation
+]
+```
+
+<Note>
+The default value of `extras` is `[/\s/]` (whitespace). To control whitespace explicitly, set `extras: $ => []`.
+</Note>
+
+### `inline`
+
+Rules to remove by inlining their definition.
+
+```javascript
+inline: $ => [
+  $._expression,
+  $._statement,
+  $._type
+]
+```
+
+**Effect**: These rules won't create syntax tree nodes; their contents appear directly in parent nodes.
+
+### `conflicts`
+
+Declares intentional LR(1) conflicts.
+
+```javascript
+conflicts: $ => [
+  [$.array, $.array_pattern],
+  [$.object, $.object_pattern]
+]
+```
+
+<Warning>
+Only declare conflicts when you have genuine ambiguities that should be resolved at runtime using GLR parsing.
+</Warning>
+
+### `externals`
+
+Tokens handled by an external scanner.
+
+```javascript
+externals: $ => [
+  $.indent,
+  $.dedent,
+  $.string_content
+]
+```
+
+See [External Scanners](/creating-parsers/external-scanners) for details.
+
+### `word`
+
+The token used for keyword extraction optimization.
+
+```javascript
+word: $ => $.identifier
+```
+
+<Tip>
+Setting a `word` token makes the parser smaller and faster by optimizing keyword matching.
+</Tip>
+
+### `supertypes`
+
+Rules considered abstract supertypes.
+
+```javascript
+supertypes: $ => [
+  $._expression,
+  $._statement,
+  $._declaration
+]
+```
+
+**Effect**: These nodes are hidden in the parse tree but can be used in queries.
+
+### `precedences`
+
+Named precedence levels.
+
+```javascript
+precedences: $ => [
+  ['unary', 'multiplicative', 'additive'],
+  ['type', 'expression']
+]
+```
+
+**Use with**: `prec('unary', ...)` instead of `prec(2, ...)`
+
+## Complete Example
+
+Here's a complete grammar demonstrating many DSL features:
+
+```javascript grammar.js
+export default grammar({
+  name: 'calculator',
+  
+  extras: $ => [/\s/],
+  
+  word: $ => $.identifier,
+  
+  rules: {
+    source_file: $ => repeat($._statement),
+    
+    _statement: $ => choice(
+      $.assignment,
+      $.expression
+    ),
+    
+    assignment: $ => seq(
+      field('left', $.identifier),
+      '=',
+      field('right', $.expression)
+    ),
+    
+    expression: $ => choice(
+      $.identifier,
+      $.number,
+      $.binary_expression,
+      $.unary_expression,
+      $.parenthesized_expression
+    ),
+    
+    binary_expression: $ => choice(
+      prec.left(2, seq(
+        field('left', $.expression),
+        field('operator', choice('*', '/')),
+        field('right', $.expression)
+      )),
+      prec.left(1, seq(
+        field('left', $.expression),
+        field('operator', choice('+', '-')),
+        field('right', $.expression)
+      ))
+    ),
+    
+    unary_expression: $ => prec(3, seq(
+      field('operator', '-'),
+      field('operand', $.expression)
+    )),
+    
+    parenthesized_expression: $ => seq(
+      '(',
+      $.expression,
+      ')'
+    ),
+    
+    identifier: $ => /[a-zA-Z_][a-zA-Z0-9_]*/,
+    number: $ => /\d+/
+  }
+});
+```
+
+## Next Steps
+
+Now that you understand the grammar DSL, learn how to:
+
+- [Write effective grammar rules](/creating-parsers/writing-grammar)
+- [Handle complex lexical rules](/creating-parsers/external-scanners)
+- [Test your parser](/creating-parsers/testing)

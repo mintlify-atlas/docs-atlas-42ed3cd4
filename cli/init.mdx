@@ -1,0 +1,247 @@
+---
+title: init
+description: Initialize a grammar repository
+---
+
+The `init` command is your starting point for creating a new grammar. It sets up a repository with all the essential files and structure needed for grammar development.
+
+```bash
+tree-sitter init [OPTIONS]
+```
+
+**Aliases:** `i`
+
+<Tip>
+  Since the command includes git-related files by default, we recommend using git for version control of your grammar.
+</Tip>
+
+## Generated Files
+
+### Required Files
+
+These files are always created if missing:
+
+#### tree-sitter.json
+
+The main configuration file that determines how `tree-sitter` interacts with the grammar. If missing, the command will prompt you for the required fields. See [Structure of tree-sitter.json](#structure-of-tree-sitterjson) below.
+
+#### package.json
+
+The npm manifest for the parser. Required for some subcommands and if the grammar has dependencies (e.g., base grammars).
+
+#### grammar.js
+
+An empty template for the main grammar file. See [Creating Parsers](https://tree-sitter.github.io/tree-sitter/creating-parsers).
+
+### Language Bindings
+
+Language bindings allow your parser to be used by projects in the respective language. The following bindings are created if enabled in `tree-sitter.json`:
+
+#### C/C++
+
+- `Makefile` - Build instructions for `make`
+- `CMakeLists.txt` - Build instructions for `cmake`
+- `bindings/c/tree_sitter/tree-sitter-language.h` - C interface
+- `bindings/c/tree-sitter-language.pc` - pkg-config metadata
+
+#### Go
+
+- `go.mod` - Go module manifest
+- `bindings/go/binding.go` - Go module wrapper
+- `bindings/go/binding_test.go` - Go package test
+
+#### Node
+
+- `binding.gyp` - Node.js build instructions
+- `bindings/node/binding.cc` - JavaScript module wrapper
+- `bindings/node/index.js` - Node.js entry point
+- `bindings/node/index.d.ts` - TypeScript type hints
+- `bindings/node/binding_test.js` - Node.js package test
+
+#### Java
+
+- `pom.xml` - Maven package manifest
+- `bindings/java/main/namespace/language/TreeSitterLanguage.java` - Java class wrapper
+- `bindings/java/test/TreeSitterLanguageTest.java` - Java package test
+
+#### Python
+
+- `pyproject.toml` - Python package manifest
+- `setup.py` - Python build instructions
+- `bindings/python/tree_sitter_language/binding.c` - Python module wrapper
+- `bindings/python/tree_sitter_language/__init__.py` - Python loader
+- `bindings/python/tree_sitter_language/__init__.pyi` - Type hints
+- `bindings/python/tree_sitter_language/py.typed` - Type hints marker
+- `bindings/python/tests/test_binding.py` - Python package test
+
+#### Rust
+
+- `Cargo.toml` - Rust package manifest
+- `bindings/rust/build.rs` - Rust build instructions
+- `bindings/rust/lib.rs` - Rust crate wrapper
+
+#### Swift
+
+- `Package.swift` - Swift build instructions
+- `bindings/swift/TreeSitterLanguage/language.h` - Swift module wrapper
+- `bindings/swift/TreeSitterLanguageTests/TreeSitterLanguageTests.swift` - Swift package test
+
+#### Zig
+
+- `build.zig` - Zig build instructions
+- `build.zig.zon` - Zig package manifest
+- `bindings/zig/root.zig` - Zig module wrapper
+- `bindings/zig/test.zig` - Zig package test
+
+### Additional Files
+
+These files improve the development experience:
+
+- `.editorconfig` - Editor formatting configuration
+- `.gitattributes` - Git line endings and language attribution
+- `.gitignore` - Git ignore patterns
+
+## Structure of tree-sitter.json
+
+### grammars Field
+
+An array of grammar objects. Typically only one object is needed unless your repo has multiple grammars (e.g., TypeScript and TSX).
+
+```json
+{
+  "grammars": [
+    {
+      "name": "ruby",
+      "scope": "source.ruby",
+      "file-types": ["rb", "gemspec", "Gemfile", "Rakefile"],
+      "first-line-regex": "#!.*\\bruby$"
+    }
+  ]
+}
+```
+
+#### Basic Fields
+
+<ParamField path="scope" type="string" required>
+  A string like `"source.js"` that identifies the language. Strive to match scope names used by popular TextMate grammars and the Linguist library.
+</ParamField>
+
+<ParamField path="path" type="string">
+  Relative path from `tree-sitter.json` to the directory containing `src/`. Default is `"."` (same folder).
+</ParamField>
+
+<ParamField path="external-files" type="array">
+  List of relative paths to files that should be checked for modifications during recompilation. Useful for tracking changes to files like `scanner.c`.
+</ParamField>
+
+#### Language Detection
+
+<ParamField path="file-types" type="array">
+  Filename suffix strings (without the dot) that identify files for this language. Suffixes may match entire filenames.
+</ParamField>
+
+<ParamField path="first-line-regex" type="string">
+  Regex pattern tested against the first line of a file. Used when file type doesn't match any grammar's `file-types`.
+</ParamField>
+
+<ParamField path="content-regex" type="string">
+  Regex pattern tested against file contents to break ties when multiple grammars match. Grammars with matching content-regex are preferred.
+</ParamField>
+
+<ParamField path="injection-regex" type="string">
+  Regex pattern tested against a language name for language injection sites. See [Language Injection](https://tree-sitter.github.io/tree-sitter/syntax-highlighting#language-injection).
+</ParamField>
+
+#### Query Paths
+
+Relative paths from `tree-sitter.json` to query files:
+
+<ParamField path="highlights" type="string" default="queries/highlights.scm">
+  Path to highlight query file.
+</ParamField>
+
+<ParamField path="locals" type="string" default="queries/locals.scm">
+  Path to local variable query file.
+</ParamField>
+
+<ParamField path="injections" type="string" default="queries/injections.scm">
+  Path to injection query file.
+</ParamField>
+
+<ParamField path="tags" type="string" default="queries/tags.scm">
+  Path to tag query file.
+</ParamField>
+
+### metadata Field
+
+Information used to populate binding files and versions:
+
+<ParamField path="version" type="string" required>
+  Current version following [semver](https://semver.org).
+</ParamField>
+
+<ParamField path="license" type="string">
+  Valid [SPDX license](https://spdx.org/licenses) identifier.
+</ParamField>
+
+<ParamField path="description" type="string">
+  Brief description of your grammar.
+</ParamField>
+
+<ParamField path="authors" type="array" required>
+  Array of objects with `name` (required), `email`, and `url` fields.
+</ParamField>
+
+<ParamField path="links" type="object">
+  Object with `repository` field and optional `funding` field.
+</ParamField>
+
+<ParamField path="namespace" type="string" default="io.github.tree-sitter">
+  Namespace for Java and Kotlin bindings.
+</ParamField>
+
+### bindings Field
+
+Controls which bindings are generated:
+
+<ParamField path="c" type="boolean" default={true}>
+  Generate C/C++ bindings.
+</ParamField>
+
+<ParamField path="go" type="boolean" default={true}>
+  Generate Go bindings.
+</ParamField>
+
+<ParamField path="java" type="boolean" default={false}>
+  Generate Java bindings.
+</ParamField>
+
+<ParamField path="node" type="boolean" default={true}>
+  Generate Node.js bindings.
+</ParamField>
+
+<ParamField path="python" type="boolean" default={true}>
+  Generate Python bindings.
+</ParamField>
+
+<ParamField path="rust" type="boolean" default={true}>
+  Generate Rust bindings.
+</ParamField>
+
+<ParamField path="swift" type="boolean" default={false}>
+  Generate Swift bindings.
+</ParamField>
+
+<ParamField path="zig" type="boolean" default={false}>
+  Generate Zig bindings.
+</ParamField>
+
+## Options
+
+<ParamField path="-u, --update" type="flag">
+  Update outdated generated files, if possible. Existing files that may have been edited manually are not updated. To force an update, remove them and run `tree-sitter init -u` again.
+</ParamField>
+
+<ParamField path="-p, --grammar-path" type="path">
+  The path to the directory containing the grammar.
+</ParamField>

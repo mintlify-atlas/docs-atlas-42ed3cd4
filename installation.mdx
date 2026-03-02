@@ -1,0 +1,361 @@
+---
+title: Installation
+description: Install Tree-sitter for your preferred language and platform
+---
+
+Tree-sitter provides bindings for multiple languages and platforms. Choose the installation method that matches your project's needs.
+
+## CLI installation
+
+The Tree-sitter CLI allows you to develop, test, and use Tree-sitter grammars from the command line. It works on macOS, Linux, and Windows.
+
+<Tabs>
+  <Tab title="Cargo">
+    Install using Rust's package manager:
+
+    ```bash
+    cargo install --locked tree-sitter-cli
+    ```
+
+    The `--locked` flag ensures you get the exact dependency versions that the CLI was tested with.
+  </Tab>
+
+  <Tab title="npm">
+    Install using Node.js package manager:
+
+    ```bash
+    npm install tree-sitter-cli
+    ```
+
+    For global installation:
+
+    ```bash
+    npm install -g tree-sitter-cli
+    ```
+  </Tab>
+
+  <Tab title="Pre-built binary">
+    Download a pre-built binary for your platform from the [GitHub releases page](https://github.com/tree-sitter/tree-sitter/releases/latest).
+
+    After downloading, extract the binary and add it to your PATH:
+
+    ```bash
+    # macOS/Linux
+    chmod +x tree-sitter
+    sudo mv tree-sitter /usr/local/bin/
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  The `tree-sitter` binary itself has no dependencies, but specific commands have runtime requirements:
+  - To generate a parser from a grammar, you must have [Node.js](https://nodejs.org) on your PATH
+  - To run and test parsers, you must have a C and C++ compiler on your system
+</Note>
+
+## Rust bindings
+
+Add Tree-sitter to your Rust project with a language grammar.
+
+<Steps>
+  <Step title="Add Tree-sitter dependency">
+    Add to your `Cargo.toml`:
+
+    ```toml
+    [dependencies]
+    tree-sitter = "0.27"
+    ```
+  </Step>
+
+  <Step title="Add a language grammar">
+    Add a language parser you want to use:
+
+    ```toml
+    [dependencies]
+    tree-sitter = "0.27"
+    tree-sitter-rust = "0.23"
+    ```
+
+    Available language packages include `tree-sitter-javascript`, `tree-sitter-python`, `tree-sitter-typescript`, and many more on [crates.io](https://crates.io).
+  </Step>
+
+  <Step title="Import in your code">
+    ```rust
+    use tree_sitter::{Parser, Language};
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+  The Rust bindings require Rust version **1.90** or higher.
+</Tip>
+
+### Features
+
+The Rust bindings support optional features:
+
+<CodeGroup>
+```toml Default (std)
+[dependencies]
+tree-sitter = "0.27"
+```
+
+```toml Wasm support
+[dependencies]
+tree-sitter = { version = "0.27", features = ["wasm"] }
+```
+
+```toml No std
+[dependencies]
+tree-sitter = { version = "0.27", default-features = false }
+```
+</CodeGroup>
+
+**Available features:**
+
+- **`std`** (enabled by default) - Allows Tree-sitter to use the standard library. Error types implement `std::error::Error`, regex performance optimizations are enabled, and DOT graph methods are available.
+- **`wasm`** - Enables Wasm language support using the `wasmtime-c-api` crate. Allows loading language grammars compiled to WebAssembly.
+
+## JavaScript/TypeScript (Web)
+
+Use Tree-sitter in browser and Node.js environments with WebAssembly bindings.
+
+<Tabs>
+  <Tab title="npm">
+    Install the web-tree-sitter package:
+
+    ```bash
+    npm install web-tree-sitter
+    ```
+
+    Then import in your code:
+
+    ```javascript
+    const { Parser } = require('web-tree-sitter');
+    await Parser.init();
+    ```
+
+    Or with ES modules:
+
+    ```javascript
+    import { Parser } from 'web-tree-sitter';
+    await Parser.init();
+    ```
+  </Tab>
+
+  <Tab title="Vite">
+    Install the package:
+
+    ```bash
+    npm install web-tree-sitter
+    ```
+
+    Add a `postinstall` script to your `package.json` to copy the Wasm file:
+
+    ```json
+    {
+      "scripts": {
+        "postinstall": "cp node_modules/web-tree-sitter/tree-sitter.wasm public"
+      }
+    }
+    ```
+
+    Import in your code:
+
+    ```javascript
+    import { Parser } from 'web-tree-sitter';
+    await Parser.init();
+    ```
+  </Tab>
+
+  <Tab title="Deno">
+    Import directly from npm:
+
+    ```javascript
+    import { Parser } from "npm:web-tree-sitter";
+    await Parser.init();
+    ```
+  </Tab>
+
+  <Tab title="Standalone script">
+    Download `web-tree-sitter.js` and `web-tree-sitter.wasm` from the [latest GitHub release](https://github.com/tree-sitter/tree-sitter/releases/latest).
+
+    ```html
+    <script src="/path/to/web-tree-sitter.js"></script>
+
+    <script>
+      const { Parser } = window.TreeSitter;
+      Parser.init().then(() => {
+        // Library is ready
+      });
+    </script>
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  For CommonJS environments like Electron, use `web-tree-sitter.cjs` instead of the ES6 module version.
+</Note>
+
+### Installing language grammars
+
+After installing web-tree-sitter, you need language grammar files compiled to WebAssembly:
+
+<Tabs>
+  <Tab title="From npm">
+    Install the language package:
+
+    ```bash
+    npm install tree-sitter-javascript
+    ```
+
+    The `.wasm` file will be in `node_modules/tree-sitter-javascript/`.
+  </Tab>
+
+  <Tab title="From GitHub releases">
+    Download `.wasm` files from the releases page of the language repository. For example, [tree-sitter-javascript releases](https://github.com/tree-sitter/tree-sitter-javascript/releases/latest).
+
+    This only works for repositories that use the official reusable workflow to publish releases.
+  </Tab>
+
+  <Tab title="Build with CLI">
+    Generate a `.wasm` file using the Tree-sitter CLI.
+
+    **Requirements:** [Emscripten](https://emscripten.org), [Docker](https://www.docker.com), or [Podman](https://podman.io)
+
+    ```bash
+    # Install dependencies
+    npm install --save-dev tree-sitter-cli tree-sitter-javascript
+
+    # Build the Wasm file
+    npx tree-sitter build --wasm node_modules/tree-sitter-javascript
+    ```
+
+    This generates `tree-sitter-javascript.wasm` in the current directory.
+  </Tab>
+</Tabs>
+
+### Debug version
+
+To use the debug version with symbols and assertions:
+
+```javascript
+import { Parser } from 'web-tree-sitter/debug';
+
+await Parser.init();
+```
+
+## C/C++ integration
+
+Embed Tree-sitter directly in C or C++ applications.
+
+<Tabs>
+  <Tab title="Build from source">
+    Clone the repository and build:
+
+    ```bash
+    git clone https://github.com/tree-sitter/tree-sitter.git
+    cd tree-sitter
+    make
+    ```
+
+    This creates:
+    - Static library: `libtree-sitter.a`
+    - Dynamic libraries (platform-specific)
+  </Tab>
+
+  <Tab title="Include in build system">
+    Add to your project's build system by including one source file:
+
+    **Source file:**
+    - `tree-sitter/lib/src/lib.c`
+
+    **Include directories:**
+    - `tree-sitter/lib/src`
+    - `tree-sitter/lib/include`
+
+    Example with GCC:
+
+    ```bash
+    gcc -c tree-sitter/lib/src/lib.c \
+      -I tree-sitter/lib/src \
+      -I tree-sitter/lib/include
+    ```
+  </Tab>
+</Tabs>
+
+### Compiling with a language
+
+To parse a specific language, include the language's parser:
+
+<CodeGroup>
+```bash Static linking
+clang \
+  -I tree-sitter/lib/include \
+  your-program.c \
+  tree-sitter-json/src/parser.c \
+  tree-sitter/libtree-sitter.a \
+  -o your-program
+```
+
+```bash Dynamic linking
+clang \
+  -I tree-sitter/lib/include \
+  your-program.c \
+  tree-sitter-json/src/parser.c \
+  -ltree-sitter \
+  -o your-program
+```
+</CodeGroup>
+
+<Note>
+  When using dynamic linking, ensure the shared library is discoverable through `LD_LIBRARY_PATH` or your system's equivalent environment variable.
+</Note>
+
+## Verify installation
+
+After installation, verify that Tree-sitter is working:
+
+<Tabs>
+  <Tab title="CLI">
+    ```bash
+    tree-sitter --version
+    ```
+
+    Expected output:
+    ```
+    tree-sitter 0.27.0
+    ```
+  </Tab>
+
+  <Tab title="Rust">
+    ```rust
+    use tree_sitter::LANGUAGE_VERSION;
+    
+    fn main() {
+        println!("Tree-sitter ABI version: {}", LANGUAGE_VERSION);
+    }
+    ```
+  </Tab>
+
+  <Tab title="JavaScript">
+    ```javascript
+    import { Parser } from 'web-tree-sitter';
+    
+    await Parser.init();
+    console.log('Tree-sitter loaded successfully');
+    ```
+  </Tab>
+</Tabs>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quick start" icon="rocket" href="/quickstart">
+    Parse your first code file with Tree-sitter
+  </Card>
+  
+  <Card title="Using parsers" icon="book" href="/using-parsers">
+    Learn to work with syntax trees and nodes
+  </Card>
+</CardGroup>

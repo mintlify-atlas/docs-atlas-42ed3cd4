@@ -1,0 +1,336 @@
+---
+title: Query Operators
+description: Use operators to capture nodes, quantify patterns, group siblings, and control matching behavior
+---
+
+Query operators extend the basic pattern syntax with powerful features for capturing specific nodes, repeating patterns, creating alternatives, and controlling match behavior.
+
+## Capturing Nodes
+
+When matching patterns, you often want to process specific nodes within the pattern. **Captures** allow you to associate names with specific nodes so you can refer to them later.
+
+Capture names are written **after** the nodes they refer to and start with an `@` character.
+
+### Basic Capture
+
+This pattern matches any assignment of a `function` to an `identifier`, capturing the identifier as `the-function-name`:
+
+```query
+(assignment_expression
+  left: (identifier) @the-function-name
+  right: (function))
+```
+
+### Multiple Captures
+
+You can capture multiple nodes in a single pattern. This matches all method definitions, capturing both the method name and class name:
+
+```query
+(class_declaration
+  name: (identifier) @the-class-name
+  body: (class_body
+    (method_definition
+      name: (property_identifier) @the-method-name)))
+```
+
+<Note>
+Capture names can use hyphens, underscores, dots, and alphanumeric characters. Common conventions include `@function.name`, `@variable.builtin`, or `@keyword`.
+</Note>
+
+## Quantification Operators
+
+Quantification operators match repeating sequences of sibling nodes, similar to regular expression quantifiers.
+
+### One or More: `+`
+
+The `+` operator matches **one or more** repetitions of a pattern.
+
+Match a sequence of one or more comments:
+
+```query
+(comment)+
+```
+
+### Zero or More: `*`
+
+The `*` operator matches **zero or more** repetitions of a pattern.
+
+Match a class declaration, capturing all decorators if any are present:
+
+```query
+(class_declaration
+  (decorator)* @the-decorator
+  name: (identifier) @the-name)
+```
+
+### Optional: `?`
+
+The `?` operator marks a node as optional.
+
+Match all function calls, capturing a string argument if one is present:
+
+```query
+(call_expression
+  function: (identifier) @the-function
+  arguments: (arguments (string)? @the-string-arg))
+```
+
+<Tabs>
+  <Tab title="+ (One or More)">
+    Use `+` when the pattern must appear at least once:
+    
+    ```query
+    (import_statement (identifier)+ @imported_names)
+    ```
+  </Tab>
+  <Tab title="* (Zero or More)">
+    Use `*` when the pattern may or may not appear:
+    
+    ```query
+    (function_declaration (annotation)* @annotations)
+    ```
+  </Tab>
+  <Tab title="? (Optional)">
+    Use `?` for optional single elements:
+    
+    ```query
+    (if_statement (else_clause)? @else)
+    ```
+  </Tab>
+</Tabs>
+
+## Grouping Sibling Nodes
+
+Use parentheses to group a sequence of **sibling** nodes. Groups can have quantification operators applied to them.
+
+### Basic Grouping
+
+Match a comment followed by a function declaration:
+
+```query
+(
+  (comment)
+  (function_declaration)
+)
+```
+
+### Quantified Groups
+
+Match a comma-separated series of numbers:
+
+```query
+(
+  (number)
+  ("," (number))*
+)
+```
+
+This pattern:
+1. Matches the first number
+2. Matches zero or more groups of comma + number
+
+<Tip>
+Grouping is essential for matching common patterns like comma-separated lists, decorator chains, or documentation followed by declarations.
+</Tip>
+
+## Alternations
+
+An **alternation** is written as square brackets `[]` containing a list of alternative patterns, similar to character classes in regular expressions.
+
+### Alternations with Captures
+
+Match a call to either a variable or an object property:
+
+```query
+(call_expression
+  function: [
+    (identifier) @function
+    (member_expression
+      property: (property_identifier) @method)
+  ])
+```
+
+In this pattern:
+- If the function is an identifier, capture it as `@function`
+- If the function is a member expression, capture the property as `@method`
+
+### Matching Multiple Tokens
+
+Match a set of keyword tokens:
+
+```query
+[
+  "break"
+  "delete"
+  "else"
+  "for"
+  "function"
+  "if"
+  "return"
+  "try"
+  "while"
+] @keyword
+```
+
+<Warning>
+All alternatives in an alternation must be valid in the same structural position. They represent different ways to match the same syntactic role.
+</Warning>
+
+## Anchors
+
+The anchor operator `.` constrains how child patterns are matched based on their position among siblings.
+
+### First Child Anchor
+
+When `.` is placed **before** the first child, that child only matches when it's the first named node in the parent.
+
+Match only the first identifier in an array:
+
+```query
+(array . (identifier) @the-element)
+```
+
+Without the anchor, this would match **every** identifier in the array. With the anchor, it matches only the first one.
+
+### Last Child Anchor
+
+When `.` is placed **after** the last child, that child only matches when it's the last named node in the parent.
+
+Match only the last expression in a block:
+
+```query
+(block (_) @last-expression .)
+```
+
+### Immediate Sibling Anchor
+
+When `.` is placed **between** two child patterns, they only match immediate siblings.
+
+Given a dotted name like `a.b.c.d`, match only consecutive identifier pairs:
+
+```query
+(dotted_name
+  (identifier) @prev-id
+  .
+  (identifier) @next-id)
+```
+
+This matches: `(a, b)`, `(b, c)`, `(c, d)`
+
+**Without** the anchor, it would also match: `(a, c)`, `(b, d)`, `(a, d)` - all combinations.
+
+<Note>
+Anchors ignore anonymous nodes when determining position. This ensures anchors work based on semantic structure, not just syntax tokens.
+</Note>
+
+## Combining Operators
+
+Operators can be combined to create sophisticated patterns.
+
+### Quantified Captures with Alternations
+
+Match multiple imports of specific types:
+
+```query
+(import_statement
+  ([
+    (identifier)
+    (aliased_import)
+  ] @import)+)
+```
+
+### Anchored Groups
+
+Match a JSDoc comment immediately before a function:
+
+```query
+(
+  (comment)+ @doc
+  .
+  (function_declaration) @function
+)
+```
+
+### Nested Captures with Quantifiers
+
+Match all parameters in a function:
+
+```query
+(function_declaration
+  name: (identifier) @function.name
+  parameters: (formal_parameters
+    (identifier)* @parameter.name))
+```
+
+## Practical Examples
+
+<AccordionGroup>
+  <Accordion title="Find All TODO Comments">
+    ```query
+    ((comment) @todo
+      (#match? @todo "TODO|FIXME|XXX"))
+    ```
+    
+    Captures comments containing TODO, FIXME, or XXX.
+  </Accordion>
+  
+  <Accordion title="Match Function Calls with Specific Arguments">
+    ```query
+    (call_expression
+      function: (identifier) @func
+      arguments: (arguments
+        . (string) @first-arg))
+    ```
+    
+    Captures functions where the first argument is a string.
+  </Accordion>
+  
+  <Accordion title="Find Export Declarations">
+    ```query
+    [
+      (export_statement)
+      (export_declaration)
+    ] @export
+    ```
+    
+    Captures any form of export statement.
+  </Accordion>
+  
+  <Accordion title="Match Chained Method Calls">
+    ```query
+    (call_expression
+      function: (member_expression
+        object: (call_expression) @chained))
+    ```
+    
+    Captures the inner call in chained calls like `obj.method1().method2()`.
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Name Captures Semantically" icon="tag">
+    Use descriptive names like `@function.name` or `@variable.builtin` that indicate the role or meaning of captured nodes.
+  </Card>
+  <Card title="Use Anchors Judiciously" icon="anchor">
+    Anchors make patterns more specific but also more brittle. Use them when position truly matters.
+  </Card>
+  <Card title="Combine Quantifiers with Predicates" icon="filter">
+    Use quantifiers to capture multiple nodes, then predicates to filter them based on content.
+  </Card>
+  <Card title="Test Alternations Thoroughly" icon="vial">
+    Each alternative branch should be tested to ensure it matches the intended nodes.
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Predicates" icon="filter" href="/queries/predicates">
+    Add conditions and filters to your captured nodes
+  </Card>
+  <Card title="Query API" icon="code" href="/queries/api">
+    Execute queries programmatically using the C API
+  </Card>
+</CardGroup>

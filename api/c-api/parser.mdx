@@ -1,0 +1,431 @@
+---
+title: Parser API
+description: Functions for creating parsers and parsing source code
+---
+
+The Parser API provides functions for creating parser instances, configuring parsing behavior, and parsing source code into syntax trees.
+
+## Creating and deleting parsers
+
+### ts_parser_new
+
+Create a new parser.
+
+```c
+TSParser *ts_parser_new(void);
+```
+
+**Returns:** A new parser instance, or `NULL` if allocation failed.
+
+**Example:**
+```c
+TSParser *parser = ts_parser_new();
+if (parser == NULL) {
+  fprintf(stderr, "Failed to create parser\n");
+  return 1;
+}
+```
+
+### ts_parser_delete
+
+Delete the parser, freeing all of the memory that it used.
+
+```c
+void ts_parser_delete(TSParser *self);
+```
+
+<ParamField path="self" type="TSParser *">
+  The parser to delete
+</ParamField>
+
+## Language configuration
+
+### ts_parser_language
+
+Get the parser's current language.
+
+```c
+const TSLanguage *ts_parser_language(const TSParser *self);
+```
+
+<ParamField path="self" type="const TSParser *">
+  The parser instance
+</ParamField>
+
+**Returns:** The current language, or `NULL` if no language is set.
+
+### ts_parser_set_language
+
+Set the language that the parser should use for parsing.
+
+```c
+bool ts_parser_set_language(TSParser *self, const TSLanguage *language);
+```
+
+<ParamField path="self" type="TSParser *">
+  The parser instance
+</ParamField>
+
+<ParamField path="language" type="const TSLanguage *">
+  The language to use
+</ParamField>
+
+**Returns:** `true` if the language was successfully assigned, `false` if there was a version mismatch.
+
+A `false` return value means the language was generated with an incompatible version of the Tree-sitter CLI. Check the language's ABI version using `ts_language_abi_version` and compare it to `TREE_SITTER_LANGUAGE_VERSION` and `TREE_SITTER_MIN_COMPATIBLE_LANGUAGE_VERSION`.
+
+**Example:**
+```c
+if (!ts_parser_set_language(parser, tree_sitter_javascript())) {
+  fprintf(stderr, "Language version mismatch\n");
+  return 1;
+}
+```
+
+## Parsing ranges
+
+### ts_parser_set_included_ranges
+
+Set the ranges of text that the parser should include when parsing.
+
+```c
+bool ts_parser_set_included_ranges(
+  TSParser *self,
+  const TSRange *ranges,
+  uint32_t count
+);
+```
+
+<ParamField path="self" type="TSParser *">
+  The parser instance
+</ParamField>
+
+<ParamField path="ranges" type="const TSRange *">
+  Array of ranges to include
+</ParamField>
+
+<ParamField path="count" type="uint32_t">
+  Number of ranges in the array
+</ParamField>
+
+**Returns:** `true` on success, `false` if the ranges are invalid.
+
+By default, the parser will always include entire documents. This function allows you to parse only a portion of a document but still return a syntax tree whose ranges match up with the document as a whole. You can also pass multiple disjoint ranges.
+
+The parser copies the range data, so you can free the ranges array after calling this function.
+
+If `count` is zero, the entire document will be parsed. Otherwise, the ranges must be:
+- Ordered from earliest to latest in the document
+- Non-overlapping: `ranges[i].end_byte <= ranges[i + 1].start_byte` for all `i < count - 1`
+
+**Example:**
+```c
+TSRange ranges[1] = {{
+  .start_point = {0, 0},
+  .end_point = {10, 0},
+  .start_byte = 0,
+  .end_byte = 500
+}};
+
+ts_parser_set_included_ranges(parser, ranges, 1);
+```
+
+### ts_parser_included_ranges
+
+Get the ranges of text that the parser will include when parsing.
+
+```c
+const TSRange *ts_parser_included_ranges(
+  const TSParser *self,
+  uint32_t *count
+);
+```
+
+<ParamField path="self" type="const TSParser *">
+  The parser instance
+</ParamField>
+
+<ParamField path="count" type="uint32_t *">
+  Output parameter for the number of ranges
+</ParamField>
+
+**Returns:** Pointer to the array of ranges (owned by the parser).
+
+The returned pointer is owned by the parser. Do not free it or write to it.
+
+## Parsing functions
+
+### ts_parser_parse
+
+Parse source code and create a syntax tree.
+
+```c
+TSTree *ts_parser_parse(
+  TSParser *self,
+  const TSTree *old_tree,
+  TSInput input
+);
+```
+
+<ParamField path="self" type="TSParser *">
+  The parser instance
+</ParamField>
+
+<ParamField path="old_tree" type="const TSTree *">
+  Previous syntax tree for incremental parsing, or `NULL` for the first parse
+</ParamField>
+
+<ParamField path="input" type="TSInput">
+  Input structure describing how to read the source code
+</ParamField>
+
+**Returns:** A syntax tree on success, or `NULL` on failure.
+
+If you're parsing this document for the first time, pass `NULL` for `old_tree`. If you have already parsed an earlier version of this document and it has since been edited, pass the previous syntax tree so that unchanged parts can be reused. This saves time and memory.
+
+For incremental parsing to work correctly, you must have already edited the old syntax tree using `ts_tree_edit` in a way that exactly matches the source code changes.
+
+The `TSInput` parameter has these fields:
+- `read`: Function to retrieve text at a given byte offset and position
+- `payload`: Arbitrary pointer passed to each `read` invocation
+- `encoding`: Either `TSInputEncodingUTF8` or `TSInputEncodingUTF16`
+- `decode`: Optional custom decode function for custom encodings
+
+Failure reasons:
+1. The parser does not have a language assigned
+2. Parsing was cancelled due to a progress callback returning `true`
+
+### ts_parser_parse_with_options
+
+Parse source code with additional options.
+
+```c
+TSTree *ts_parser_parse_with_options(
+  TSParser *self,
+  const TSTree *old_tree,
+  TSInput input,
+  TSParseOptions parse_options
+);
+```
+
+<ParamField path="self" type="TSParser *">
+  The parser instance
+</ParamField>
+
+<ParamField path="old_tree" type="const TSTree *">
+  Previous syntax tree for incremental parsing, or `NULL`
+</ParamField>
+
+<ParamField path="input" type="TSInput">
+  Input structure describing how to read the source code
+</ParamField>
+
+<ParamField path="parse_options" type="TSParseOptions">
+  Options structure with progress callback
+</ParamField>
+
+**Returns:** A syntax tree on success, or `NULL` on failure.
+
+This extends `ts_parser_parse` with a `TSParseOptions` struct containing:
+- `payload`: Arbitrary pointer passed to the progress callback
+- `progress_callback`: Function called periodically during parsing that can cancel parsing by returning `true`
+
+### ts_parser_parse_string
+
+Parse source code stored in a contiguous buffer.
+
+```c
+TSTree *ts_parser_parse_string(
+  TSParser *self,
+  const TSTree *old_tree,
+  const char *string,
+  uint32_t length
+);
+```
+
+<ParamField path="self" type="TSParser *">
+  The parser instance
+</ParamField>
+
+<ParamField path="old_tree" type="const TSTree *">
+  Previous syntax tree for incremental parsing, or `NULL`
+</ParamField>
+
+<ParamField path="string" type="const char *">
+  Source code string
+</ParamField>
+
+<ParamField path="length" type="uint32_t">
+  Length of the string in bytes
+</ParamField>
+
+**Returns:** A syntax tree on success, or `NULL` on failure.
+
+**Example:**
+```c
+const char *source = "function add(a, b) { return a + b; }";
+TSTree *tree = ts_parser_parse_string(
+  parser,
+  NULL,
+  source,
+  strlen(source)
+);
+```
+
+### ts_parser_parse_string_encoding
+
+Parse source code stored in a contiguous buffer with a specified encoding.
+
+```c
+TSTree *ts_parser_parse_string_encoding(
+  TSParser *self,
+  const TSTree *old_tree,
+  const char *string,
+  uint32_t length,
+  TSInputEncoding encoding
+);
+```
+
+<ParamField path="self" type="TSParser *">
+  The parser instance
+</ParamField>
+
+<ParamField path="old_tree" type="const TSTree *">
+  Previous syntax tree for incremental parsing, or `NULL`
+</ParamField>
+
+<ParamField path="string" type="const char *">
+  Source code string
+</ParamField>
+
+<ParamField path="length" type="uint32_t">
+  Length of the string in bytes
+</ParamField>
+
+<ParamField path="encoding" type="TSInputEncoding">
+  The text encoding: `TSInputEncodingUTF8`, `TSInputEncodingUTF16LE`, or `TSInputEncodingUTF16BE`
+</ParamField>
+
+**Returns:** A syntax tree on success, or `NULL` on failure.
+
+### ts_parser_reset
+
+Instruct the parser to start the next parse from the beginning.
+
+```c
+void ts_parser_reset(TSParser *self);
+```
+
+<ParamField path="self" type="TSParser *">
+  The parser instance
+</ParamField>
+
+If the parser previously failed because of the progress callback, it will resume where it left off on the next call to a parse function. If you don't want to resume and instead intend to parse a different document, call this function first.
+
+## Logging and debugging
+
+### ts_parser_set_logger
+
+Set the logger that a parser should use during parsing.
+
+```c
+void ts_parser_set_logger(TSParser *self, TSLogger logger);
+```
+
+<ParamField path="self" type="TSParser *">
+  The parser instance
+</ParamField>
+
+<ParamField path="logger" type="TSLogger">
+  Logger structure with callback function and payload
+</ParamField>
+
+The parser does not take ownership of the logger payload. If a logger was previously assigned, the caller is responsible for releasing any memory owned by the previous logger.
+
+The `TSLogger` struct contains:
+- `payload`: Arbitrary pointer passed to the log callback
+- `log`: Callback function that receives log messages
+
+**Example:**
+```c
+void log_callback(void *payload, TSLogType log_type, const char *message) {
+  if (log_type == TSLogTypeParse) {
+    printf("[PARSE] %s\n", message);
+  } else {
+    printf("[LEX] %s\n", message);
+  }
+}
+
+TSLogger logger = {
+  .payload = NULL,
+  .log = log_callback
+};
+
+ts_parser_set_logger(parser, logger);
+```
+
+### ts_parser_logger
+
+Get the parser's current logger.
+
+```c
+TSLogger ts_parser_logger(const TSParser *self);
+```
+
+<ParamField path="self" type="const TSParser *">
+  The parser instance
+</ParamField>
+
+**Returns:** The current logger structure.
+
+### ts_parser_print_dot_graphs
+
+Set the file descriptor to which the parser should write debugging graphs during parsing.
+
+```c
+void ts_parser_print_dot_graphs(TSParser *self, int fd);
+```
+
+<ParamField path="self" type="TSParser *">
+  The parser instance
+</ParamField>
+
+<ParamField path="fd" type="int">
+  File descriptor for output, or a negative number to disable
+</ParamField>
+
+The graphs are formatted in the DOT language. You may want to pipe these graphs directly to a `dot(1)` process to generate SVG output.
+
+## WebAssembly support
+
+### ts_parser_set_wasm_store
+
+Assign a Wasm store to the parser.
+
+```c
+void ts_parser_set_wasm_store(TSParser *self, TSWasmStore *store);
+```
+
+<ParamField path="self" type="TSParser *">
+  The parser instance
+</ParamField>
+
+<ParamField path="store" type="TSWasmStore *">
+  The Wasm store to assign
+</ParamField>
+
+A parser must have a Wasm store in order to use Wasm languages.
+
+### ts_parser_take_wasm_store
+
+Remove the parser's current Wasm store and return it.
+
+```c
+TSWasmStore *ts_parser_take_wasm_store(TSParser *self);
+```
+
+<ParamField path="self" type="TSParser *">
+  The parser instance
+</ParamField>
+
+**Returns:** The Wasm store, or `NULL` if the parser doesn't have one.

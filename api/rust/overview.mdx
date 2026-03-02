@@ -1,0 +1,151 @@
+---
+title: Rust Bindings Overview
+description: Overview of the Tree-sitter Rust bindings
+---
+
+The Tree-sitter Rust bindings provide idiomatic Rust access to the Tree-sitter parsing library. The bindings are available on [crates.io](https://crates.io/crates/tree-sitter) and provide a safe, ergonomic API for parsing and analyzing source code.
+
+## Installation
+
+Add Tree-sitter to your `Cargo.toml`:
+
+```toml
+[dependencies]
+tree-sitter = "0.24"
+```
+
+To use a language grammar, add it as a dependency:
+
+```toml
+[dependencies]
+tree-sitter = "0.24"
+tree-sitter-rust = "0.23"
+```
+
+## Basic Usage
+
+First, create a parser:
+
+```rust
+use tree_sitter::{InputEdit, Language, Parser, Point};
+
+let mut parser = Parser::new();
+```
+
+Then, assign a language to the parser:
+
+```rust
+parser.set_language(&tree_sitter_rust::LANGUAGE.into())
+    .expect("Error loading Rust grammar");
+```
+
+Now you can parse source code:
+
+```rust
+let source_code = "fn test() {}";
+let mut tree = parser.parse(source_code, None).unwrap();
+let root_node = tree.root_node();
+
+assert_eq!(root_node.kind(), "source_file");
+assert_eq!(root_node.start_position().column, 0);
+assert_eq!(root_node.end_position().column, 12);
+```
+
+## Core Types
+
+The Rust bindings expose several key types:
+
+<CardGroup cols={2}>
+  <Card title="Parser" icon="gear" href="/api/rust/parser">
+    Create and configure parsers for generating syntax trees
+  </Card>
+  <Card title="Tree" icon="tree" href="/api/rust/tree">
+    Represent and manipulate syntax trees
+  </Card>
+  <Card title="Node" icon="circle-nodes" href="/api/rust/node">
+    Navigate and inspect individual nodes in a syntax tree
+  </Card>
+  <Card title="Query" icon="magnifying-glass" href="/api/rust/query">
+    Search syntax trees using pattern matching
+  </Card>
+  <Card title="Language" icon="language" href="/api/rust/language">
+    Define and inspect language grammars
+  </Card>
+  <Card title="Wasm" icon="cube" href="/api/rust/wasm">
+    Load and use WebAssembly-based grammars
+  </Card>
+</CardGroup>
+
+## ABI Compatibility
+
+The Rust bindings include version constants for checking ABI compatibility:
+
+<ParamField path="LANGUAGE_VERSION" type="usize">
+  The latest ABI version supported by the current version of the library
+</ParamField>
+
+<ParamField path="MIN_COMPATIBLE_LANGUAGE_VERSION" type="usize">
+  The earliest ABI version supported by the current version of the library
+</ParamField>
+
+## Features
+
+The crate supports several optional features:
+
+<ParamField path="std" type="feature" default="enabled">
+  Enables standard library support. When enabled:
+  - Error types implement `std::error::Error`
+  - `regex` performance optimizations are enabled
+  - DOT graph methods are available
+</ParamField>
+
+<ParamField path="wasm" type="feature">
+  Enables WebAssembly support for loading grammar files compiled to Wasm. Requires the `wasmtime-c-api` crate.
+</ParamField>
+
+## Error Handling
+
+The bindings use idiomatic Rust error handling with `Result` types:
+
+```rust
+pub enum LanguageError {
+    Version(usize),
+    #[cfg(feature = "wasm")]
+    Wasm,
+}
+
+pub struct QueryError {
+    pub row: usize,
+    pub column: usize,
+    pub offset: usize,
+    pub message: String,
+    pub kind: QueryErrorKind,
+}
+
+pub enum QueryErrorKind {
+    Syntax,
+    NodeType,
+    Field,
+    Capture,
+    Predicate,
+    Structure,
+    Language,
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Parser API" icon="gear" href="/api/rust/parser">
+    Learn how to create and configure parsers
+  </Card>
+  <Card title="Tree Traversal" icon="route" href="/api/rust/node">
+    Navigate and inspect syntax trees
+  </Card>
+  <Card title="Query Patterns" icon="magnifying-glass" href="/api/rust/query">
+    Search syntax trees with queries
+  </Card>
+  <Card title="Wasm Support" icon="cube" href="/api/rust/wasm">
+    Use WebAssembly-based grammars
+  </Card>
+</CardGroup>

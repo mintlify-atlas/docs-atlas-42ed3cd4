@@ -1,0 +1,358 @@
+---
+title: Parser Class
+description: API reference for the Tree-sitter Parser class in JavaScript/Wasm
+---
+
+The `Parser` class is the main interface for parsing source code. It is a stateful object that produces a `Tree` based on source code input.
+
+## Initialization
+
+### `Parser.init(moduleOptions?)`
+
+Initialize the Tree-sitter library. This must be called before creating any `Parser` instances.
+
+```typescript
+static async init(moduleOptions?: Partial<EmscriptenModule>): Promise<void>
+```
+
+**Parameters:**
+- `moduleOptions` (optional) - Options to configure the WebAssembly module
+  - `locateFile?: (scriptName: string, scriptDirectory: string) => string` - Function to locate the `.wasm` file
+
+**Example:**
+
+```javascript
+import { Parser } from 'web-tree-sitter';
+
+// Basic initialization
+await Parser.init();
+
+// With custom locate function (e.g., for Next.js)
+await Parser.init({
+  locateFile(scriptName, scriptDirectory) {
+    return `/wasm/${scriptName}`;
+  },
+});
+```
+
+## Constructor
+
+### `new Parser()`
+
+Create a new parser instance.
+
+```typescript
+const parser = new Parser();
+```
+
+<Note>
+You must call `Parser.init()` before constructing a parser, or a runtime error will be thrown.
+</Note>
+
+## Properties
+
+### `language`
+
+The parser's current language.
+
+```typescript
+language: Language | null
+```
+
+**Example:**
+
+```javascript
+const lang = parser.language;
+if (lang) {
+  console.log('Parser language:', lang.name);
+}
+```
+
+## Methods
+
+### `setLanguage(language)`
+
+Set the language that the parser should use for parsing.
+
+```typescript
+setLanguage(language: Language | null): this
+```
+
+**Parameters:**
+- `language` - A `Language` object loaded from a `.wasm` file, or `null` to unset
+
+**Returns:** The parser instance (for method chaining)
+
+**Throws:** If the language version is incompatible with the current library version
+
+**Example:**
+
+```javascript
+import { Language } from 'web-tree-sitter';
+
+const JavaScript = await Language.load('/tree-sitter-javascript.wasm');
+parser.setLanguage(JavaScript);
+
+// Can be chained
+parser.setLanguage(JavaScript).parse(sourceCode);
+```
+
+### `parse(input, oldTree?, options?)`
+
+Parse source code and create a syntax tree.
+
+```typescript
+parse(
+  input: string | ParseCallback,
+  oldTree?: Tree | null,
+  options?: ParseOptions
+): Tree | null
+```
+
+**Parameters:**
+- `input` - Either a string of source code, or a callback function that returns text chunks
+- `oldTree` (optional) - A previous syntax tree for incremental parsing. If provided, it must have been edited with `tree.edit()` to match the new text
+- `options` (optional) - Parsing options
+  - `includedRanges?: Range[]` - Array of ranges to parse (default: entire document)
+  - `progressCallback?: (state: ParseState) => void` - Called periodically during parsing
+
+**Returns:** A `Tree` object, or `null` if:
+- The parser has no language assigned
+- The progress callback cancelled parsing by returning `true`
+
+**Example with string input:**
+
+```javascript
+const tree = parser.parse('let x = 1;');
+console.log(tree.rootNode.toString());
+```
+
+**Example with callback:**
+
+```javascript
+const lines = ['function foo() {', '  return 42;', '}'];
+
+const tree = parser.parse((index, position) => {
+  const line = lines[position.row];
+  if (line) return line.slice(position.column);
+});
+```
+
+**Example with incremental parsing:**
+
+```javascript
+// Parse original code
+const tree1 = parser.parse('let x = 1;');
+
+// Edit the tree to match the new text
+tree1.edit({
+  startIndex: 0,
+  oldEndIndex: 3,
+  newEndIndex: 5,
+  startPosition: { row: 0, column: 0 },
+  oldEndPosition: { row: 0, column: 3 },
+  newEndPosition: { row: 0, column: 5 },
+});
+
+// Re-parse with the old tree
+const tree2 = parser.parse('const x = 1;', tree1);
+```
+
+**Example with included ranges:**
+
+```javascript
+// Parse only JavaScript within HTML script tags
+const tree = parser.parse(sourceCode, null, {
+  includedRanges: [
+    {
+      startIndex: 100,
+      endIndex: 200,
+      startPosition: { row: 5, column: 0 },
+      endPosition: { row: 10, column: 0 },
+    },
+  ],
+});
+```
+
+**Example with timeout:**
+
+```javascript
+const startTime = Date.now();
+const tree = parser.parse(sourceCode, null, {
+  progressCallback: (state) => {
+    // Cancel parsing after 1 second
+    if (Date.now() - startTime > 1000) {
+      return true;
+    }
+  },
+});
+
+if (!tree) {
+  console.log('Parsing timed out');
+}
+```
+
+### `reset()`
+
+Instruct the parser to start the next parse from the beginning.
+
+```typescript
+reset(): void
+```
+
+If the parser previously failed because of a callback, by default it will resume where it left off. Call `reset()` if you want to parse a different document instead.
+
+**Example:**
+
+```javascript
+parser.parse(callback1); // May fail mid-parse
+parser.reset();          // Start fresh
+parser.parse(callback2); // Parse from beginning
+```
+
+### `getIncludedRanges()`
+
+Get the ranges of text that the parser will include when parsing.
+
+```typescript
+getIncludedRanges(): Range[]
+```
+
+**Returns:** Array of ranges that were set via `parse()` options, or a default range covering the entire document
+
+**Example:**
+
+```javascript
+const ranges = parser.getIncludedRanges();
+console.log('Parsing ranges:', ranges);
+```
+
+### `setLogger(callback)`
+
+Set a logging callback for debugging the parser.
+
+```typescript
+setLogger(callback: LogCallback | boolean | null): this
+```
+
+**Parameters:**
+- `callback` - A function to receive log messages, or `false`/`null` to disable logging
+  - `LogCallback: (message: string, isLex: boolean) => void`
+
+**Returns:** The parser instance (for method chaining)
+
+**Example:**
+
+```javascript
+parser.setLogger((message, isLex) => {
+  console.log(`[${isLex ? 'LEX' : 'PARSE'}] ${message}`);
+});
+
+parser.parse('x + y');
+// Logs:
+// [PARSE] reduce sym:program, child_count:1
+// [PARSE] accept
+
+// Disable logging
+parser.setLogger(false);
+```
+
+### `getLogger()`
+
+Get the parser's current logger callback.
+
+```typescript
+getLogger(): LogCallback | null
+```
+
+**Returns:** The current logger function, or `null` if no logger is set
+
+**Example:**
+
+```javascript
+const logger = parser.getLogger();
+if (logger) {
+  console.log('Logger is active');
+}
+```
+
+### `delete()`
+
+Delete the parser and free its resources.
+
+```typescript
+delete(): void
+```
+
+**Example:**
+
+```javascript
+const parser = new Parser();
+// ... use parser ...
+parser.delete(); // Clean up
+```
+
+<Note>
+While the library uses `FinalizationRegistry` for automatic cleanup when available, explicitly calling `delete()` is recommended for deterministic resource management.
+</Note>
+
+## Types
+
+### `ParseOptions`
+
+Options for configuring the parsing process.
+
+```typescript
+interface ParseOptions {
+  includedRanges?: Range[];
+  progressCallback?: (state: ParseState) => void;
+}
+```
+
+### `ParseState`
+
+Represents the current state of the parser, passed to the progress callback.
+
+```typescript
+interface ParseState {
+  currentOffset: number; // Current byte offset in the document
+  hasError: boolean;     // Whether an error has been encountered
+}
+```
+
+## Constants
+
+### `LANGUAGE_VERSION`
+
+The latest ABI version supported by the current library version.
+
+```typescript
+const LANGUAGE_VERSION: number;
+```
+
+### `MIN_COMPATIBLE_VERSION`
+
+The earliest ABI version supported by the current library version.
+
+```typescript
+const MIN_COMPATIBLE_VERSION: number;
+```
+
+**Example:**
+
+```javascript
+import { LANGUAGE_VERSION, MIN_COMPATIBLE_VERSION } from 'web-tree-sitter';
+
+const language = await Language.load('/tree-sitter-javascript.wasm');
+const version = language.abiVersion;
+
+if (version < MIN_COMPATIBLE_VERSION || version > LANGUAGE_VERSION) {
+  console.error('Incompatible language version');
+}
+```
+
+## See Also
+
+- [Tree class](/api/javascript/tree) - Working with syntax trees
+- [Node class](/api/javascript/node) - Traversing and inspecting nodes
+- [Query API](/api/javascript/query) - Pattern matching on syntax trees

@@ -1,0 +1,404 @@
+---
+title: Code Navigation
+description: Use Tree-sitter's tagging system for code navigation, symbol search, and language servers.
+---
+
+Tree-sitter's tagging system enables code navigation features like "go to definition", symbol search, and outline views. It's used in GitHub's search-based code navigation and can be integrated into language servers and IDEs.
+
+## Tagging Concepts
+
+**Tagging** identifies entities that can be named in a program using Tree-sitter queries. Each tag contains:
+
+- **Role** - Whether the entity is a definition or reference
+- **Kind** - How the entity is used (class, function, variable, etc.)
+- **Name** - The identifier text
+- **Documentation** - Optional docstring
+
+## Capture Convention
+
+Tags use a `@role.kind` naming convention:
+
+```scheme
+; Function definition
+(function_definition
+  name: (identifier) @name) @definition.function
+
+; Method call
+(method_call
+  method: (identifier) @name) @reference.call
+```
+
+### Standard Tag Vocabulary
+
+| Category | Tag |
+|----------|-----|
+| Class definitions | `@definition.class` |
+| Function definitions | `@definition.function` |
+| Interface definitions | `@definition.interface` |
+| Method definitions | `@definition.method` |
+| Module definitions | `@definition.module` |
+| Function/method calls | `@reference.call` |
+| Class reference | `@reference.class` |
+| Interface implementation | `@reference.implementation` |
+
+<Info>
+Applications can extend this vocabulary or recognize only a subset based on their needs.
+</Info>
+
+## Writing Tag Queries
+
+Tag queries are stored in `queries/tags.scm`:
+
+### Basic Example (Python)
+
+```scheme
+; Function definitions
+(function_definition
+  name: (identifier) @name) @definition.function
+
+; Class definitions  
+(class_definition
+  name: (identifier) @name) @definition.class
+
+; Function calls
+(call
+  function: (identifier) @name) @reference.call
+```
+
+### Advanced Example (JavaScript)
+
+```scheme
+; Handle various function assignment patterns
+(assignment_expression
+  left: [
+    (identifier) @name
+    (member_expression
+      property: (property_identifier) @name)
+  ]
+  right: [(arrow_function) (function)]
+) @definition.function
+
+; Method definitions
+(method_definition
+  name: (property_identifier) @name) @definition.method
+
+; Class declarations
+(class_declaration
+  name: (identifier) @name) @definition.class
+```
+
+## Documentation Capture
+
+Capture docstrings using the `@doc` capture:
+
+```scheme
+(comment)* @doc
+.
+(function_definition
+  name: (identifier) @name) @definition.function
+```
+
+### Built-in Functions
+
+Two special functions help process docstrings:
+
+#### `#strip!`
+
+Removes patterns from captured text:
+
+```scheme
+((comment) @doc
+ (#strip! @doc "^#\\s*"))
+```
+
+This removes `#` and leading whitespace from Ruby comments.
+
+#### `#select-adjacent!`
+
+Filters text to only nodes adjacent to another capture:
+
+```scheme
+(
+  (comment)* @doc
+  .
+  [
+    (class
+      name: [(constant) @name]) @definition.class
+    (singleton_class
+      value: [(constant) @name]) @definition.class
+  ]
+  (#strip! @doc "^#\\s*")
+  (#select-adjacent! @doc @definition.class)
+)
+```
+
+This ensures only comments directly above the class are included.
+
+## TagsConfiguration Structure
+
+The `tree-sitter-tags` crate provides the core implementation:
+
+```rust
+pub struct TagsConfiguration {
+    pub language: Language,
+    pub query: Query,
+    syntax_type_names: Vec<Box<[u8]>>,
+    capture_map: HashMap<u32, NamedCapture>,
+    doc_capture_index: Option<u32>,
+    name_capture_index: Option<u32>,
+    // ...
+}
+```
+
+### Creating a Configuration
+
+```rust
+use tree_sitter_tags::TagsConfiguration;
+
+let config = TagsConfiguration::new(
+    language,
+    tags_query,
+    locals_query,
+)?;
+```
+
+<Note>
+The locals query is concatenated with the tags query to support local scope tracking.
+</Note>
+
+## Tag Structure
+
+Each tag contains comprehensive location information:
+
+```rust
+pub struct Tag {
+    pub range: Range<usize>,           // Byte range
+    pub name_range: Range<usize>,      // Name's byte range
+    pub line_range: Range<usize>,      // Line range
+    pub span: Range<Point>,            // Point range
+    pub utf16_column_range: Range<usize>, // UTF-16 columns
+    pub docs: Option<String>,          // Documentation
+    pub is_definition: bool,           // Definition vs reference
+    pub syntax_type_id: u32,           // Kind identifier
+}
+```
+
+## Generating Tags
+
+Use `TagsContext` to generate tags from source code:
+
+```rust
+use tree_sitter_tags::{TagsConfiguration, TagsContext};
+
+let mut context = TagsContext::new();
+let config = TagsConfiguration::new(
+    language,
+    tags_query,
+    locals_query,
+)?;
+
+let tags = context.generate_tags(
+    &config,
+    source.as_bytes(),
+    None, // cancellation_flag
+)?;
+
+for tag in tags {
+    println!(
+        "{:?} at {}:{}\n  {}",
+        tag.syntax_type_id,
+        tag.span.start.row,
+        tag.span.start.column,
+        &source[tag.line_range.clone()],
+    );
+}
+```
+
+## Local Scope Tracking
+
+Tags can track local scopes to distinguish between local and non-local names:
+
+```scheme
+; Mark scopes
+(method) @local.scope
+(block) @local.scope
+
+; Mark definitions
+(method_parameters (identifier) @local.definition)
+(assignment left:(identifier) @local.definition)
+
+; Mark references
+(identifier) @local.reference
+```
+
+Use the `(#is-not? local)` predicate to exclude local variables:
+
+```scheme
+; Only tag non-local identifiers
+((identifier) @name
+ (#is-not? local)) @reference.call
+```
+
+## Command-Line Usage
+
+Test tag queries with the `tree-sitter tags` command:
+
+```bash
+tree-sitter tags test.rb
+```
+
+### Example Output
+
+```ruby
+# test.rb
+module Foo
+  class Bar
+    # won't be included
+
+    # is adjacent, will be
+    def baz
+    end
+  end
+end
+```
+
+```text
+    test.rb
+        Foo              | module       def (0, 7) - (0, 10) `module Foo`
+        Bar              | class        def (1, 8) - (1, 11) `class Bar`
+        baz              | method       def (4, 8) - (4, 11) `def baz`  "is adjacent, will be"
+```
+
+## Unit Testing
+
+Tag queries can be tested using comment assertions:
+
+```ruby
+# test/tags/example.rb
+module Foo
+  #     ^ definition.module
+  class Bar
+    #    ^ definition.class
+
+    def baz
+      #  ^ definition.method
+    end
+  end
+end
+```
+
+Run tests with:
+
+```bash
+tree-sitter test
+```
+
+## Performance Considerations
+
+### Line Length Limits
+
+The tags system limits lines to 180 characters (`MAX_LINE_LEN`) to prevent excessive memory usage.
+
+### Cancellation Support
+
+Long-running operations can be cancelled:
+
+```rust
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+let cancellation_flag = AtomicUsize::new(0);
+
+let tags = context.generate_tags(
+    &config,
+    source.as_bytes(),
+    Some(&cancellation_flag),
+)?;
+
+// From another thread:
+cancellation_flag.store(1, Ordering::Relaxed);
+```
+
+Checks occur every 100 iterations (`CANCELLATION_CHECK_INTERVAL`).
+
+### Reusing Context
+
+Reuse `TagsContext` instances to avoid parser reallocation:
+
+```rust
+let mut context = TagsContext::new();
+
+for file in files {
+    let tags = context.generate_tags(
+        &config,
+        file.as_bytes(),
+        None,
+    )?;
+    // Process tags...
+}
+```
+
+## Integration Patterns
+
+### Language Server Protocol
+
+```rust
+// Generate document symbols
+let tags = context.generate_tags(&config, source, None)?;
+
+let symbols: Vec<DocumentSymbol> = tags
+    .into_iter()
+    .filter(|tag| tag.is_definition)
+    .map(|tag| DocumentSymbol {
+        name: source[tag.name_range.clone()].to_string(),
+        kind: syntax_type_to_symbol_kind(tag.syntax_type_id),
+        range: byte_range_to_lsp_range(tag.range),
+        // ...
+    })
+    .collect();
+```
+
+### Symbol Search
+
+```rust
+// Index all definitions
+let mut symbol_index = HashMap::new();
+
+for tag in tags {
+    if tag.is_definition {
+        let name = &source[tag.name_range.clone()];
+        symbol_index
+            .entry(name.to_string())
+            .or_insert_with(Vec::new)
+            .push(tag);
+    }
+}
+```
+
+## Error Handling
+
+The tags system can fail with these errors:
+
+```rust
+pub enum Error {
+    Query(QueryError),        // Invalid query syntax
+    Regex(regex::Error),      // Invalid regex in predicates
+    Cancelled,                // Operation cancelled
+    InvalidLanguage,          // Language not supported
+    InvalidCapture(String),   // Unknown capture name
+}
+```
+
+<Warning>
+Only captures matching `@definition.*`, `@reference.*`, `@doc`, `@name`, or `@local.*` are valid. Other captures will return `Error::InvalidCapture`.
+</Warning>
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="Syntax Highlighting" icon="palette" href="/advanced/syntax-highlighting">
+    Learn about Tree-sitter's highlighting system
+  </Card>
+  <Card title="Query Language" icon="code" href="/using-parsers/queries">
+    Master the query language syntax
+  </Card>
+</CardGroup>

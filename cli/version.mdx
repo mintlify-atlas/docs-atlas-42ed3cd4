@@ -1,0 +1,301 @@
+---
+title: version
+description: Display or increment the version of a grammar
+---
+
+The `version` command manages the version of your grammar across all binding files and manifests.
+
+```bash
+tree-sitter version [VERSION]
+```
+
+**Aliases:** `publish`
+
+## Usage Modes
+
+### Display Current Version
+
+Run without arguments to display the current version:
+
+```bash
+tree-sitter version
+```
+
+Output:
+```
+0.1.0
+```
+
+### Set Specific Version
+
+Provide a version number to set:
+
+```bash
+tree-sitter version 1.2.3
+```
+
+### Auto-Bump Version
+
+Use `--bump` to automatically increment:
+
+```bash
+tree-sitter version --bump patch  # 1.2.3 → 1.2.4
+tree-sitter version --bump minor  # 1.2.3 → 1.3.0
+tree-sitter version --bump major  # 1.2.3 → 2.0.0
+```
+
+## Updated Files
+
+The command updates the version in these files (if they exist):
+
+- `tree-sitter.json`
+- `Cargo.toml`
+- `Cargo.lock`
+- `package.json`
+- `package-lock.json`
+- `Makefile`
+- `CMakeLists.txt`
+- `pyproject.toml`
+
+## Options
+
+<ParamField path="version" type="semver">
+  The version to set. Must follow [semantic versioning](https://semver.org) format (e.g., `1.2.3`).
+  
+  Conflicts with `--bump`.
+</ParamField>
+
+<ParamField path="-p, --grammar-path" type="path">
+  The path to the directory containing the grammar.
+</ParamField>
+
+<ParamField path="--bump" type="level">
+  Automatically bump the version from the current version in `tree-sitter.json`.
+  
+  Values:
+  - `patch` - Increment patch version (x.y.Z)
+  - `minor` - Increment minor version (x.Y.0)
+  - `major` - Increment major version (X.0.0)
+  
+  Conflicts with explicit version argument.
+</ParamField>
+
+## Examples
+
+### Display Version
+
+```bash
+tree-sitter version
+```
+
+### Set Version
+
+```bash
+tree-sitter version 1.0.0
+```
+
+### Patch Bump
+
+```bash
+# Before: 1.2.3
+tree-sitter version --bump patch
+# After: 1.2.4
+```
+
+### Minor Bump
+
+```bash
+# Before: 1.2.3
+tree-sitter version --bump minor
+# After: 1.3.0
+```
+
+### Major Bump
+
+```bash
+# Before: 1.2.3
+tree-sitter version --bump major
+# After: 2.0.0
+```
+
+### With Custom Grammar Path
+
+```bash
+tree-sitter version --bump minor --grammar-path ../my-grammar
+```
+
+## Workflow
+
+Recommended version management workflow:
+
+### 1. Make Changes
+
+Develop and test your grammar:
+
+```bash
+# Edit grammar.js
+tree-sitter generate
+tree-sitter test
+```
+
+### 2. Bump Version
+
+Update the version appropriately:
+
+```bash
+# For bug fixes
+tree-sitter version --bump patch
+
+# For new features
+tree-sitter version --bump minor
+
+# For breaking changes
+tree-sitter version --bump major
+```
+
+### 3. Commit Changes
+
+Commit the version changes:
+
+```bash
+git add .
+git commit -m "Bump version to $(tree-sitter version)"
+```
+
+### 4. Tag Release
+
+Create a git tag:
+
+```bash
+git tag v$(tree-sitter version)
+git push origin v$(tree-sitter version)
+```
+
+### 5. Publish
+
+Publish to package registries:
+
+```bash
+# NPM
+npm publish
+
+# Cargo
+cargo publish
+
+# Python
+python -m build
+twine upload dist/*
+```
+
+## Semantic Versioning
+
+Follow [semver](https://semver.org) guidelines:
+
+- **MAJOR** (X.0.0) - Breaking changes
+  - Changed syntax tree structure
+  - Removed or renamed nodes
+  - Changed public API
+
+- **MINOR** (0.X.0) - New features (backwards compatible)
+  - New language constructs
+  - New queries
+  - Performance improvements
+
+- **PATCH** (0.0.X) - Bug fixes (backwards compatible)
+  - Fixed parsing bugs
+  - Fixed incorrect syntax trees
+  - Documentation updates
+
+## External Tool Requirements
+
+Some binding updates require external tools:
+
+### Cargo (Rust)
+
+Updating `Cargo.toml` and `Cargo.lock` requires `cargo`:
+
+```bash
+# Check if installed
+cargo --version
+
+# Install if needed
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+### NPM (Node.js)
+
+Updating `package-lock.json` requires `npm`:
+
+```bash
+# Check if installed
+npm --version
+
+# Install if needed
+# Visit: https://nodejs.org/
+```
+
+## Best Practices
+
+### Keep Versions in Sync
+
+Always use `tree-sitter version` instead of manually editing version numbers. This ensures consistency across all bindings.
+
+### Version Control
+
+Commit version changes separately:
+
+```bash
+tree-sitter version --bump minor
+git add .
+git commit -m "chore: bump version to $(tree-sitter version)"
+```
+
+### Tag Releases
+
+Always tag releases in git:
+
+```bash
+git tag v$(tree-sitter version)
+git push --tags
+```
+
+### Changelog
+
+Maintain a `CHANGELOG.md` documenting changes:
+
+```markdown
+## [1.2.0] - 2024-03-02
+
+### Added
+- Support for new syntax feature
+
+### Fixed
+- Bug in error recovery
+```
+
+## Troubleshooting
+
+### Version Update Failed
+
+If version update fails:
+
+1. Check file permissions
+2. Verify files are valid JSON/TOML
+3. Ensure external tools are installed
+4. Check for syntax errors in manifest files
+
+### Inconsistent Versions
+
+If versions are out of sync:
+
+1. Run `tree-sitter version` to check current version
+2. Manually inspect affected files
+3. Use `tree-sitter version <VERSION>` to force update
+
+### Git Conflicts
+
+If version changes cause conflicts:
+
+1. Accept the newer version
+2. Run `tree-sitter version <VERSION>` to re-sync
+3. Commit the resolved state

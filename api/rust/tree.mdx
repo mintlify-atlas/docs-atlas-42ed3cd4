@@ -1,0 +1,315 @@
+---
+title: Tree
+description: API reference for the Tree struct
+---
+
+A `Tree` represents the syntactic structure of a source code file. Trees are immutable but can be edited to reflect changes in the source code.
+
+## Accessing Nodes
+
+### root_node
+
+```rust
+pub fn root_node(&self) -> Node
+```
+
+Get the root node of the syntax tree.
+
+```rust
+let tree = parser.parse(source_code, None).unwrap();
+let root_node = tree.root_node();
+```
+
+### root_node_with_offset
+
+```rust
+pub fn root_node_with_offset(&self, offset_bytes: usize, offset_extent: Point) -> Node
+```
+
+Get the root node of the syntax tree, but with its position shifted forward by the given offset.
+
+<ParamField path="offset_bytes" type="usize" required>
+  The byte offset to shift the node's position
+</ParamField>
+
+<ParamField path="offset_extent" type="Point" required>
+  The row/column offset to shift the node's position
+</ParamField>
+
+## Language Information
+
+### language
+
+```rust
+pub fn language(&self) -> LanguageRef
+```
+
+Get the language that was used to parse the syntax tree.
+
+```rust
+let language = tree.language();
+println!("Parsed with: {}", language.name().unwrap());
+```
+
+## Tree Editing
+
+### edit
+
+```rust
+pub fn edit(&mut self, edit: &InputEdit)
+```
+
+Edit the syntax tree to keep it in sync with source code that has been edited. You must describe the edit both in terms of byte offsets and in terms of row/column coordinates.
+
+<ParamField path="edit" type="&InputEdit" required>
+  A description of the edit made to the source code
+</ParamField>
+
+```rust
+tree.edit(&InputEdit {
+    start_byte: 8,
+    old_end_byte: 8,
+    new_end_byte: 14,
+    start_position: Point::new(0, 8),
+    old_end_position: Point::new(0, 8),
+    new_end_position: Point::new(0, 14),
+});
+
+let new_tree = parser.parse(new_source_code, Some(&tree));
+```
+
+## Tree Traversal
+
+### walk
+
+```rust
+pub fn walk(&self) -> TreeCursor
+```
+
+Create a new `TreeCursor` starting from the root of the tree. This is equivalent to calling `tree.root_node().walk()`.
+
+```rust
+let mut cursor = tree.walk();
+while cursor.goto_first_child() {
+    println!("Node: {}", cursor.node().kind());
+}
+```
+
+## Comparing Trees
+
+### changed_ranges
+
+```rust
+pub fn changed_ranges(&self, other: &Self) -> impl ExactSizeIterator<Item = Range>
+```
+
+Compare this old edited syntax tree to a new syntax tree representing the same document, returning a sequence of ranges whose syntactic structure has changed.
+
+For this to work correctly, this syntax tree must have been edited such that its ranges match up to the new tree. Generally, you'll want to call this method right after calling one of the `Parser::parse` functions. Call it on the old tree that was passed to parse, and pass the new tree that was returned from `parse`.
+
+<ParamField path="other" type="&Tree" required>
+  The new tree to compare against
+</ParamField>
+
+**Returns:** An iterator over the ranges that changed between the two trees.
+
+```rust
+let old_tree = parser.parse(old_source, None).unwrap();
+old_tree.edit(&edit);
+let new_tree = parser.parse(new_source, Some(&old_tree)).unwrap();
+
+for range in old_tree.changed_ranges(&new_tree) {
+    println!("Changed range: {:?}", range);
+}
+```
+
+## Range Information
+
+### included_ranges
+
+```rust
+pub fn included_ranges(&self) -> Vec<Range>
+```
+
+Get the included ranges that were used to parse the syntax tree.
+
+## Debugging
+
+### print_dot_graph
+
+```rust
+#[cfg(feature = "std")]
+pub fn print_dot_graph(&self, file: &impl AsRawFd)
+```
+
+Print a graph of the tree to the given file descriptor. The graph is formatted in the DOT language. You may want to pipe this graph directly to a `dot(1)` process in order to generate SVG output.
+
+<ParamField path="file" type="&impl AsRawFd" required>
+  The file descriptor to write the graph to
+</ParamField>
+
+<Note>
+This method is only available on Unix platforms with the `std` feature enabled.
+</Note>
+
+## Cloning
+
+The `Tree` struct implements `Clone`, allowing you to create copies of syntax trees:
+
+```rust
+let tree = parser.parse(source_code, None).unwrap();
+let tree_copy = tree.clone();
+```
+
+## InputEdit
+
+The `InputEdit` struct describes a change to a text document:
+
+```rust
+pub struct InputEdit {
+    pub start_byte: usize,
+    pub old_end_byte: usize,
+    pub new_end_byte: usize,
+    pub start_position: Point,
+    pub old_end_position: Point,
+    pub new_end_position: Point,
+}
+```
+
+<ParamField path="start_byte" type="usize">
+  The byte offset where the edit begins
+</ParamField>
+
+<ParamField path="old_end_byte" type="usize">
+  The byte offset where the edit ends in the old text
+</ParamField>
+
+<ParamField path="new_end_byte" type="usize">
+  The byte offset where the edit ends in the new text
+</ParamField>
+
+<ParamField path="start_position" type="Point">
+  The row/column position where the edit begins
+</ParamField>
+
+<ParamField path="old_end_position" type="Point">
+  The row/column position where the edit ends in the old text
+</ParamField>
+
+<ParamField path="new_end_position" type="Point">
+  The row/column position where the edit ends in the new text
+</ParamField>
+
+### edit_point
+
+```rust
+pub fn edit_point(&self, point: &mut Point, byte: &mut usize)
+```
+
+Edit a point to keep it in-sync with source code that has been edited. This function updates a single point's byte offset and row/column position based on this edit operation.
+
+<ParamField path="point" type="&mut Point" required>
+  The point to update
+</ParamField>
+
+<ParamField path="byte" type="&mut usize" required>
+  The byte offset to update
+</ParamField>
+
+### edit_range
+
+```rust
+pub fn edit_range(&self, range: &mut Range)
+```
+
+Edit a range to keep it in-sync with source code that has been edited. This function updates a range's start and end positions based on this edit operation.
+
+<ParamField path="range" type="&mut Range" required>
+  The range to update
+</ParamField>
+
+## Examples
+
+### Basic Tree Access
+
+```rust
+let tree = parser.parse("fn test() {}", None).unwrap();
+let root = tree.root_node();
+
+println!("Root kind: {}", root.kind());
+println!("Root range: {:?}", root.range());
+```
+
+### Incremental Parsing with Edits
+
+```rust
+// Parse the original source
+let source = "fn test() {}";
+let mut tree = parser.parse(source, None).unwrap();
+
+// Make an edit: insert "a: u32" at position 8
+let edit = InputEdit {
+    start_byte: 8,
+    old_end_byte: 8,
+    new_end_byte: 14,
+    start_position: Point::new(0, 8),
+    old_end_position: Point::new(0, 8),
+    new_end_position: Point::new(0, 14),
+};
+
+tree.edit(&edit);
+
+// Re-parse with the edited tree
+let new_source = "fn test(a: u32) {}";
+let new_tree = parser.parse(new_source, Some(&tree)).unwrap();
+```
+
+### Finding Changed Ranges
+
+```rust
+let old_source = "fn foo() {}";
+let new_source = "fn bar() {}";
+
+let mut old_tree = parser.parse(old_source, None).unwrap();
+
+// Edit the tree to reflect the change from "foo" to "bar"
+old_tree.edit(&InputEdit {
+    start_byte: 3,
+    old_end_byte: 6,
+    new_end_byte: 6,
+    start_position: Point::new(0, 3),
+    old_end_position: Point::new(0, 6),
+    new_end_position: Point::new(0, 6),
+});
+
+let new_tree = parser.parse(new_source, Some(&old_tree)).unwrap();
+
+for range in old_tree.changed_ranges(&new_tree) {
+    println!("Changed: {}:{} - {}:{}",
+        range.start_point.row, range.start_point.column,
+        range.end_point.row, range.end_point.column);
+}
+```
+
+### Tree Walking
+
+```rust
+let tree = parser.parse(source_code, None).unwrap();
+let mut cursor = tree.walk();
+
+fn walk_tree(cursor: &mut TreeCursor, depth: usize) {
+    println!("{}{}", "  ".repeat(depth), cursor.node().kind());
+    
+    if cursor.goto_first_child() {
+        loop {
+            walk_tree(cursor, depth + 1);
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+        cursor.goto_parent();
+    }
+}
+
+walk_tree(&mut cursor, 0);
+```

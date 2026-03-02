@@ -1,0 +1,119 @@
+---
+title: playground
+description: Start a local playground to test your parser interactively
+---
+
+The `playground` command starts a local playground to test your parser interactively in a web browser.
+
+```bash
+tree-sitter playground [OPTIONS]
+```
+
+**Aliases:** `play`, `pg`, `web-ui`
+
+<Warning>
+  For this to work, you must have already built the parser as a Wasm module using [`tree-sitter build --wasm`](/cli/build).
+</Warning>
+
+## Features
+
+The playground provides:
+
+- **Live parsing** - See the syntax tree update as you type
+- **Query testing** - Test Tree-sitter queries in real-time
+- **Syntax highlighting** - View highlighted output
+- **Error visualization** - Easily spot parse errors
+
+## Options
+
+<ParamField path="-q, --quiet" type="flag">
+  Don't automatically open the playground in the default browser. The server will still start and you can manually open the URL.
+</ParamField>
+
+<ParamField path="--grammar-path" type="path">
+  The path to the directory containing the grammar and Wasm files.
+</ParamField>
+
+<ParamField path="-e, --export" type="path">
+  Export static playground files to the specified directory instead of serving them. This allows you to host the playground as a static site.
+</ParamField>
+
+## Examples
+
+### Start Playground
+
+```bash
+tree-sitter playground
+```
+
+This will:
+1. Start a local web server
+2. Open the playground in your default browser
+3. Load your parser from the Wasm file
+
+### Start Without Opening Browser
+
+```bash
+tree-sitter playground --quiet
+```
+
+Then manually navigate to the URL shown (typically `http://localhost:3000`).
+
+### Export Static Files
+
+```bash
+tree-sitter playground --export ./playground-dist
+```
+
+This creates static HTML, CSS, and JavaScript files that can be hosted on any web server.
+
+### Playground with Custom Grammar Path
+
+```bash
+tree-sitter playground --grammar-path ../my-grammar
+```
+
+## Workflow
+
+Typical development workflow with the playground:
+
+1. Make changes to your grammar:
+   ```bash
+   # Edit grammar.js
+   ```
+
+2. Regenerate and build:
+   ```bash
+   tree-sitter generate
+   tree-sitter build --wasm
+   ```
+
+3. Test in playground:
+   ```bash
+   tree-sitter playground
+   ```
+
+4. Iterate until satisfied
+
+## Troubleshooting
+
+### Wasm Module Not Found
+
+If you see "Wasm module not found" errors:
+
+```bash
+# Build the Wasm module first
+tree-sitter build --wasm
+```
+
+### Playground Not Updating
+
+If changes aren't reflected:
+
+1. Rebuild the Wasm module
+2. Hard refresh your browser (Ctrl+Shift+R or Cmd+Shift+R)
+3. Clear browser cache if needed
+
+### Port Already in Use
+
+If the default port is busy, the CLI will try alternative ports automatically.

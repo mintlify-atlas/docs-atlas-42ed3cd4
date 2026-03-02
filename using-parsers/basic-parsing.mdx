@@ -1,0 +1,360 @@
+---
+title: Basic Parsing
+description: Learn how to parse source code and work with syntax nodes
+---
+
+## Providing the Code
+
+Tree-sitter provides two main functions for parsing source code: one for simple strings and one for custom data structures.
+
+### Parsing Strings
+
+The simplest way to parse source code is using `ts_parser_parse_string`:
+
+```c
+TSTree *ts_parser_parse_string(
+  TSParser *self,
+  const TSTree *old_tree,
+  const char *string,
+  uint32_t length
+);
+```
+
+<ParamField path="self" type="TSParser*" required>
+  The parser instance
+</ParamField>
+
+<ParamField path="old_tree" type="const TSTree*">
+  A previous syntax tree for incremental parsing (pass `NULL` for initial parse)
+</ParamField>
+
+<ParamField path="string" type="const char*" required>
+  The UTF-8 encoded source code to parse
+</ParamField>
+
+<ParamField path="length" type="uint32_t" required>
+  The length of the string in bytes
+</ParamField>
+
+### Parsing Custom Data Structures
+
+You may want to parse source code that's stored in a custom data structure, like a [piece table](https://en.wikipedia.org/wiki/Piece_table) or a [rope](https://en.wikipedia.org/wiki/Rope_(data_structure)). In this case, use the more general `ts_parser_parse` function:
+
+```c
+TSTree *ts_parser_parse(
+  TSParser *self,
+  const TSTree *old_tree,
+  TSInput input
+);
+```
+
+The `TSInput` structure lets you provide your own function for reading text:
+
+```c
+typedef struct {
+  void *payload;
+  const char *(*read)(
+    void *payload,
+    uint32_t byte_offset,
+    TSPoint position,
+    uint32_t *bytes_read
+  );
+  TSInputEncoding encoding;
+  TSDecodeFunction decode;
+} TSInput;
+```
+
+<Steps>
+  <Step title="Define a read callback">
+    Your callback receives a byte offset and position, and should return a pointer to text starting at that position.
+    ```c
+    const char *read_callback(
+      void *payload,
+      uint32_t byte_offset,
+      TSPoint position,
+      uint32_t *bytes_read
+    ) {
+      MyDocument *doc = (MyDocument *)payload;
+      // Return a chunk of text from your data structure
+      return doc->get_chunk_at(byte_offset, bytes_read);
+    }
+    ```
+  </Step>
+  
+  <Step title="Create the TSInput structure">
+    ```c
+    TSInput input = {
+      .payload = my_document,
+      .read = read_callback,
+      .encoding = TSInputEncodingUTF8,
+      .decode = NULL
+    };
+    ```
+  </Step>
+  
+  <Step title="Parse the document">
+    ```c
+    TSTree *tree = ts_parser_parse(parser, NULL, input);
+    ```
+  </Step>
+</Steps>
+
+### Custom Text Encoding
+
+If your text uses an encoding other than UTF-8 or UTF-16, you can provide a custom decode function:
+
+```c
+typedef uint32_t (*TSDecodeFunction)(
+  const uint8_t *string,
+  uint32_t length,
+  int32_t *code_point
+);
+```
+
+<Warning>
+  The `TSInputEncoding` must be set to `TSInputEncodingCustom` for the decode function to be called.
+</Warning>
+
+The function should:
+1. Read bytes from `string` (up to `length` bytes)
+2. Write the decoded code point to `code_point`
+3. Return the number of bytes consumed
+
+## Syntax Nodes
+
+Tree-sitter provides a [DOM](https://en.wikipedia.org/wiki/Document_Object_Model)-style interface for inspecting syntax trees.
+
+### Node Type
+
+A syntax node's **type** is a string that indicates which grammar rule the node represents:
+
+```c
+const char *ts_node_type(TSNode);
+```
+
+<CodeGroup>
+```c C
+TSNode node = ts_tree_root_node(tree);
+printf("Node type: %s\n", ts_node_type(node));
+```
+
+```rust Rust
+let node = tree.root_node();
+println!("Node type: {}", node.kind());
+```
+
+```javascript JavaScript
+const node = tree.rootNode;
+console.log('Node type:', node.type);
+```
+</CodeGroup>
+
+### Node Position
+
+Nodes store their position in the source code both in raw bytes and row/column coordinates:
+
+```c
+typedef struct {
+  uint32_t row;
+  uint32_t column;
+} TSPoint;
+
+uint32_t ts_node_start_byte(TSNode);
+uint32_t ts_node_end_byte(TSNode);
+TSPoint ts_node_start_point(TSNode);
+TSPoint ts_node_end_point(TSNode);
+```
+
+<Note>
+  In a `TSPoint`, rows and columns are zero-based. The `row` field represents the number of newlines before a given position, while `column` represents the number of bytes between the position and the beginning of the line. A newline is considered to be a single line feed (`\n`) character.
+</Note>
+
+<CodeGroup>
+```c C
+TSNode node = ts_tree_root_node(tree);
+uint32_t start_byte = ts_node_start_byte(node);
+TSPoint start_point = ts_node_start_point(node);
+printf("Start: byte %d, row %d, column %d\n",
+       start_byte, start_point.row, start_point.column);
+```
+
+```rust Rust
+let node = tree.root_node();
+let start_byte = node.start_byte();
+let start_point = node.start_position();
+println!("Start: byte {}, row {}, column {}",
+         start_byte, start_point.row, start_point.column);
+```
+
+```javascript JavaScript
+const node = tree.rootNode;
+console.log('Start:', {
+  byte: node.startIndex,
+  row: node.startPosition.row,
+  column: node.startPosition.column
+});
+```
+</CodeGroup>
+
+## Retrieving Nodes
+
+### Root Node
+
+Every tree has a root node:
+
+```c
+TSNode ts_tree_root_node(const TSTree *);
+```
+
+### Child Nodes
+
+Once you have a node, you can access its children:
+
+```c
+uint32_t ts_node_child_count(TSNode);
+TSNode ts_node_child(TSNode, uint32_t);
+```
+
+### Siblings and Parent
+
+You can also navigate to siblings and parent nodes:
+
+```c
+TSNode ts_node_next_sibling(TSNode);
+TSNode ts_node_prev_sibling(TSNode);
+TSNode ts_node_parent(TSNode);
+```
+
+<Warning>
+  These methods may return a **null node** to indicate that no such node exists (e.g., no next sibling). Always check if a node is null using `ts_node_is_null(TSNode)`.
+</Warning>
+
+```c
+bool ts_node_is_null(TSNode);
+```
+
+## Named vs Anonymous Nodes
+
+Tree-sitter produces [**concrete syntax trees**](https://en.wikipedia.org/wiki/Parse_tree) — trees that contain nodes for every individual token in the source code, including things like commas and parentheses. This is important for use-cases like [syntax highlighting](https://en.wikipedia.org/wiki/Syntax_highlighting).
+
+However, some types of code analysis are easier with an [**abstract syntax tree**](https://en.wikipedia.org/wiki/Abstract_syntax_tree) — a tree in which less important details have been removed. Tree-sitter supports both by making a distinction between **named** and **anonymous** nodes.
+
+### Example
+
+Consider this grammar rule:
+
+```js
+if_statement: $ => seq("if", "(", $._expression, ")", $._statement);
+```
+
+A syntax node representing an `if_statement` would have 5 children:
+- The condition expression (named)
+- The body statement (named)
+- The `if`, `(`, and `)` tokens (anonymous)
+
+The expression and statement are marked as **named** nodes because they have explicit names in the grammar. The `if`, `(`, and `)` nodes are **anonymous** because they are represented as simple strings.
+
+### Checking if a Node is Named
+
+```c
+bool ts_node_is_named(TSNode);
+```
+
+### Named-Only Navigation
+
+You can skip over anonymous nodes by using the `_named_` variants:
+
+```c
+TSNode ts_node_named_child(TSNode, uint32_t);
+uint32_t ts_node_named_child_count(TSNode);
+TSNode ts_node_next_named_sibling(TSNode);
+TSNode ts_node_prev_named_sibling(TSNode);
+```
+
+<Tip>
+  Using the `_named_` methods makes the syntax tree function much like an abstract syntax tree.
+</Tip>
+
+## Node Field Names
+
+Many grammars assign unique **field names** to particular child nodes to make them easier to analyze.
+
+### Accessing Children by Field Name
+
+```c
+TSNode ts_node_child_by_field_name(
+  TSNode self,
+  const char *field_name,
+  uint32_t field_name_length
+);
+```
+
+<CodeGroup>
+```c C
+TSNode if_node = /* ... */;
+TSNode condition = ts_node_child_by_field_name(
+  if_node,
+  "condition",
+  strlen("condition")
+);
+```
+
+```rust Rust
+let if_node = /* ... */;
+let condition = if_node.child_by_field_name("condition");
+```
+
+```javascript JavaScript
+const ifNode = /* ... */;
+const condition = ifNode.childForFieldName('condition');
+```
+</CodeGroup>
+
+### Using Field IDs
+
+Fields also have numeric IDs that you can use to avoid repeated string comparisons:
+
+```c
+uint32_t ts_language_field_count(const TSLanguage *);
+const char *ts_language_field_name_for_id(const TSLanguage *, TSFieldId);
+TSFieldId ts_language_field_id_for_name(const TSLanguage *, const char *, uint32_t);
+
+TSNode ts_node_child_by_field_id(TSNode, TSFieldId);
+```
+
+<CodeGroup>
+```c C
+// Get field ID once
+TSFieldId condition_field = ts_language_field_id_for_name(
+  language,
+  "condition",
+  strlen("condition")
+);
+
+// Reuse field ID for multiple queries
+TSNode condition1 = ts_node_child_by_field_id(if_node1, condition_field);
+TSNode condition2 = ts_node_child_by_field_id(if_node2, condition_field);
+```
+
+```rust Rust
+// Field IDs are handled automatically by the Rust API
+let condition = if_node.child_by_field_name("condition");
+```
+
+```javascript JavaScript
+// Field access is optimized automatically in JavaScript
+const condition = ifNode.childForFieldName('condition');
+```
+</CodeGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Advanced Parsing" icon="rocket" href="/using-parsers/advanced-parsing">
+    Learn about incremental parsing and editing
+  </Card>
+  
+  <Card title="Walking Trees" icon="shoe-prints" href="/using-parsers/walking-trees">
+    Use tree cursors for efficient traversal
+  </Card>
+</CardGroup>

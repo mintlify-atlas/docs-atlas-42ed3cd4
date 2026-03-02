@@ -1,0 +1,700 @@
+---
+title: Writing Grammar Rules
+description: Best practices and techniques for structuring effective Tree-sitter grammars
+---
+
+# Writing the Grammar
+
+Writing a grammar requires creativity. There are infinite context-free grammars (CFGs) that can describe any given language. To produce a good Tree-sitter parser, you need to create a grammar with two important properties:
+
+1. **Intuitive structure** - Direct correspondence between grammar symbols and recognizable language constructs
+2. **Close adherence to LR(1)** - Efficient parsing with minimal conflicts
+
+<Note>
+Tree-sitter produces a concrete syntax tree where each node corresponds to a grammar symbol. Your grammar structure directly affects the tree structure.
+</Note>
+
+## Starting Your Grammar
+
+### The First Few Rules
+
+Find a formal specification for your language. As you read through the context-free grammar, you'll discover a complex graph of relationships. Start by creating structure for basic groups:
+
+- **Declarations** - Top-level constructs
+- **Definitions** - Function, class, variable definitions  
+- **Statements** - Executable code
+- **Expressions** - Values and operations
+- **Types** - Type annotations
+- **Patterns** - Pattern matching constructs
+
+### Breadth-First Approach
+
+For a language like Go, start with a skeleton:
+
+```javascript grammar.js
+export default grammar({
+  name: 'go',
+  
+  rules: {
+    source_file: $ => repeat($._definition),
+    
+    _definition: $ => choice(
+      $.function_definition
+      // TODO: other kinds of definitions
+    ),
+    
+    function_definition: $ => seq(
+      'func',
+      $.identifier,
+      $.parameter_list,
+      $._type,
+      $.block
+    ),
+    
+    parameter_list: $ => seq(
+      '(',
+      // TODO: parameters
+      ')'
+    ),
+    
+    _type: $ => choice(
+      'bool'
+      // TODO: other kinds of types
+    ),
+    
+    block: $ => seq(
+      '{',
+      repeat($._statement),
+      '}'
+    ),
+    
+    _statement: $ => choice(
+      $.return_statement
+      // TODO: other kinds of statements
+    ),
+    
+    return_statement: $ => seq(
+      'return',
+      $.expression,
+      ';'
+    ),
+    
+    expression: $ => choice(
+      $.identifier,
+      $.number
+      // TODO: other kinds of expressions
+    ),
+    
+    identifier: $ => /[a-z]+/,
+    number: $ => /\d+/
+  }
+});
+```
+
+<Steps>
+  <Step title="Create the skeleton">
+    Define basic structure touching on major groups of rules.
+  </Step>
+  
+  <Step title="Choose a sublanguage">
+    Pick one area (types, expressions, statements) to develop first.
+  </Step>
+  
+  <Step title="Flesh out rules">
+    Add rules one-by-one for that sublanguage.
+  </Step>
+  
+  <Step title="Test frequently">
+    Use `tree-sitter parse` to verify your progress with real code.
+  </Step>
+  
+  <Step title="Add tests">
+    Write tests in `test/corpus/` for each rule you add.
+  </Step>
+</Steps>
+
+<Tip>
+The first rule in the `rules` object is the start rule (typically `source_file`).
+</Tip>
+
+## Structuring Rules Well
+
+### Avoid Language Spec Structure
+
+Language specifications often have deeply nested rules that don't translate well to syntax trees.
+
+Consider this JavaScript code:
+
+```javascript
+return x + y;
+```
+
+The ECMAScript spec represents this with 20+ levels of indirection:
+
+```text
+ReturnStatement          ->  'return' Expression
+Expression               ->  AssignmentExpression
+AssignmentExpression     ->  ConditionalExpression
+ConditionalExpression    ->  LogicalORExpression
+LogicalORExpression      ->  LogicalANDExpression
+LogicalANDExpression     ->  BitwiseORExpression
+BitwiseORExpression      ->  BitwiseXORExpression
+BitwiseXORExpression     ->  BitwiseANDExpression
+BitwiseANDExpression     ->  EqualityExpression
+EqualityExpression       ->  RelationalExpression
+RelationalExpression     ->  ShiftExpression
+ShiftExpression          ->  AdditiveExpression
+AdditiveExpression       ->  MultiplicativeExpression
+MultiplicativeExpression ->  ExponentiationExpression
+ExponentiationExpression ->  UnaryExpression
+UnaryExpression          ->  UpdateExpression
+UpdateExpression         ->  LeftHandSideExpression
+LeftHandSideExpression   ->  NewExpression
+NewExpression            ->  MemberExpression
+MemberExpression         ->  PrimaryExpression
+PrimaryExpression        ->  IdentifierReference
+```
+
+<Warning>
+Don't create a 20-level deep tree for a simple expression. Use precedence instead.
+</Warning>
+
+### Flatten with Precedence
+
+Create a flatter structure using `prec`:
+
+```javascript
+rules: {
+  expression: $ => choice(
+    $.identifier,
+    $.number,
+    $.unary_expression,
+    $.binary_expression,
+    // ...
+  ),
+  
+  unary_expression: $ => prec(2, choice(
+    seq('-', $.expression),
+    seq('!', $.expression),
+    seq('typeof', $.expression)
+  )),
+  
+  binary_expression: $ => choice(
+    prec.left(2, seq($.expression, '*', $.expression)),
+    prec.left(1, seq($.expression, '+', $.expression))
+  )
+}
+```
+
+## Using Precedence
+
+### Resolving Conflicts
+
+When Tree-sitter encounters conflicts, it provides helpful error messages:
+
+```text
+Error: Unresolved conflict for symbol sequence:
+
+  '-'  _expression  •  '*'  …
+
+Possible interpretations:
+
+  1:  '-'  (binary_expression  _expression  •  '*'  _expression)
+  2:  (unary_expression  '-'  _expression)  •  '*'  …
+
+Possible resolutions:
+
+  1:  Specify a higher precedence in `binary_expression`
+  2:  Specify a higher precedence in `unary_expression`
+  3:  Specify a left or right associativity in `unary_expression`
+  4:  Add a conflict for these rules: `binary_expression` `unary_expression`
+```
+
+<Note>
+The `•` character shows exactly where during parsing the conflict occurs.
+</Note>
+
+### Applying Precedence
+
+For `-a * b`, we want unary `-` to bind tighter than binary `*`:
+
+```javascript
+unary_expression: $ => prec(2, choice(
+  seq('-', $.expression),
+  seq('!', $.expression)
+))
+```
+
+## Using Associativity
+
+### Left vs Right
+
+For `a * b * c`, we need to choose between:
+
+1. `(a * b) * c` - left associative
+2. `a * (b * c)` - right associative
+
+Most operators are left associative:
+
+```javascript
+binary_expression: $ => choice(
+  // Multiplication and division (precedence 2, left)
+  prec.left(2, seq($.expression, '*', $.expression)),
+  prec.left(2, seq($.expression, '/', $.expression)),
+  
+  // Addition and subtraction (precedence 1, left)
+  prec.left(1, seq($.expression, '+', $.expression)),
+  prec.left(1, seq($.expression, '-', $.expression))
+)
+```
+
+Assignment is typically right associative:
+
+```javascript
+assignment: $ => prec.right(seq(
+  $.identifier,
+  '=',
+  choice($.expression, $.assignment)
+))
+```
+
+**Result**: `a = b = c` parses as `a = (b = c)`
+
+## Using Conflicts
+
+### Intentional Ambiguity
+
+Some constructs are legitimately ambiguous. In JavaScript, `[x, y]` could be:
+
+1. An array literal: `let a = [x, y]`
+2. A destructuring pattern: `let [x, y] = arr`
+
+```javascript
+export default grammar({
+  name: 'javascript',
+  
+  conflicts: $ => [
+    [$.array, $.array_pattern]
+  ],
+  
+  rules: {
+    expression: $ => choice(
+      $.identifier,
+      $.array,
+      $.pattern
+    ),
+    
+    array: $ => seq(
+      '[',
+      optional(seq(
+        $.expression,
+        repeat(seq(',', $.expression))
+      )),
+      ']'
+    ),
+    
+    array_pattern: $ => seq(
+      '[',
+      optional(seq(
+        $.pattern,
+        repeat(seq(',', $.pattern))
+      )),
+      ']'
+    ),
+    
+    pattern: $ => choice(
+      $.identifier,
+      $.array_pattern
+    )
+  }
+});
+```
+
+<Warning>
+Only use `conflicts` when you have genuine ambiguity that should be resolved at runtime. Tree-sitter will use GLR parsing to explore both possibilities.
+</Warning>
+
+### Dynamic Precedence
+
+Use `prec.dynamic` to prefer one interpretation:
+
+```javascript
+array: $ => prec.dynamic(1, seq(
+  '[',
+  optional(seq($.expression, repeat(seq(',', $.expression)))),
+  ']'
+))
+```
+
+## Hiding Rules
+
+### Underscore Prefix
+
+Rules starting with `_` are hidden from the syntax tree:
+
+```javascript
+rules: {
+  source_file: $ => repeat($._statement),
+  
+  // Hidden - won't appear in tree
+  _statement: $ => choice(
+    $.expression_statement,
+    $.if_statement,
+    $.return_statement
+  ),
+  
+  // Visible rules
+  if_statement: $ => seq('if', $.expression, $.block),
+  return_statement: $ => seq('return', $.expression)
+}
+```
+
+<Tip>
+Hide rules that always wrap a single child to reduce tree depth and noise.
+</Tip>
+
+## Using Fields
+
+### Named Children
+
+Fields let you access children by name instead of index:
+
+```javascript
+function_definition: $ => seq(
+  'func',
+  field('name', $.identifier),
+  field('parameters', $.parameter_list),
+  field('return_type', optional($._type)),
+  field('body', $.block)
+),
+
+binary_expression: $ => prec.left(seq(
+  field('left', $.expression),
+  field('operator', choice('+', '-', '*', '/')),
+  field('right', $.expression)
+))
+```
+
+**Benefits**:
+- Code is more readable
+- Resilient to grammar changes
+- Self-documenting structure
+
+## Using Extras
+
+### Whitespace and Comments
+
+Extras can appear anywhere in the language:
+
+```javascript
+export default grammar({
+  name: 'mylang',
+  
+  extras: $ => [
+    /\s/,        // Whitespace
+    $.comment
+  ],
+  
+  rules: {
+    comment: $ => token(choice(
+      seq('//', /.*/),
+      seq('/*', /[^*]*\*+([^/*][^*]*\*+)*/, '/')
+    ))
+  }
+});
+```
+
+<Warning>
+When adding complex patterns to `extras`, associate them with a rule instead of inlining. This dramatically reduces parser size.
+</Warning>
+
+<CodeGroup>
+```javascript Good - Rule Reference
+extras: $ => [
+  /\s/,
+  $.comment  // Reference to rule
+],
+
+rules: {
+  comment: $ => token(/* complex pattern */)
+}
+```
+
+```javascript Bad - Inline Pattern
+const comment = token(/* complex pattern */);
+
+extras: $ => [
+  /\s/,
+  comment  // Inlined, increases parser size
+]
+```
+</CodeGroup>
+
+<Note>
+Tree-sitter simplifies `\s` to `[ \t\n\r]` as a performance optimization.
+</Note>
+
+## Using Supertypes
+
+### Abstract Categories
+
+Supertypes represent abstract categories without creating visible nodes:
+
+```javascript
+export default grammar({
+  name: 'javascript',
+  
+  supertypes: $ => [
+    $._expression,
+    $._statement,
+    $._declaration
+  ],
+  
+  rules: {
+    _expression: $ => choice(
+      $.identifier,
+      $.unary_expression,
+      $.binary_expression,
+      $.call_expression,
+      $.member_expression
+    )
+  }
+});
+```
+
+**Effect**: `_expression` nodes don't appear in the tree, but can be used in queries.
+
+## Standard Rule Names
+
+Follow these conventions for consistency:
+
+<CardGroup cols={2}>
+  <Card title="source_file" icon="file">
+    Root node representing an entire source file
+  </Card>
+  
+  <Card title="expression" icon="function">
+    Choice between different expression types
+  </Card>
+  
+  <Card title="statement" icon="code">
+    Choice between different statement types
+  </Card>
+  
+  <Card title="block" icon="brackets-curly">
+    Parent node for block scopes
+  </Card>
+  
+  <Card title="type" icon="text">
+    Type annotations (int, char, void, etc.)
+  </Card>
+  
+  <Card title="identifier" icon="tag">
+    Variable/function names (often the `word` token)
+  </Card>
+  
+  <Card title="string" icon="quotes">
+    String literals
+  </Card>
+  
+  <Card title="comment" icon="message">
+    Comments (often in `extras`)
+  </Card>
+</CardGroup>
+
+# Lexical Analysis
+
+Tree-sitter's parsing is divided into two phases: parsing and lexing.
+
+## Conflicting Tokens
+
+Grammars often have tokens that match the same characters. Tree-sitter resolves conflicts using:
+
+<Steps>
+  <Step title="Context-aware lexing">
+    The lexer only tries to recognize tokens that are valid at the current position.
+  </Step>
+  
+  <Step title="Lexical precedence">
+    `token(prec(N, ...))` gives explicit precedence values. Higher precedence wins.
+  </Step>
+  
+  <Step title="Match length">
+    Prefer the token matching the longest sequence of characters.
+  </Step>
+  
+  <Step title="Match specificity">
+    Prefer a String (`'if'`) over a RegExp (`/[a-z]+/`) for the same match.
+  </Step>
+  
+  <Step title="Rule order">
+    Prefer the token that appears earlier in the grammar.
+  </Step>
+</Steps>
+
+<Warning>
+External scanners have priority over all these rules. See [External Scanners](/creating-parsers/external-scanners) for details.
+</Warning>
+
+## Lexical vs Parse Precedence
+
+Don't confuse these two:
+
+- **Parse precedence** - `prec(N, rule)` - Which rule to use for a sequence of tokens
+- **Lexical precedence** - `token(prec(N, ...))` - Which token to recognize at a position
+
+<CodeGroup>
+```javascript Parse Precedence
+// Choose between interpretations of token sequences
+unary_expression: $ => prec(2, seq('-', $.expression))
+```
+
+```javascript Lexical Precedence  
+// Prefer 'if' keyword over identifier
+if_keyword: $ => token(prec(1, 'if'))
+```
+</CodeGroup>
+
+## Keywords
+
+### The Word Token
+
+Many languages have keywords (`if`, `for`, `return`) and a general `identifier` token. Without special handling, `instanceofSomething` would incorrectly tokenize as `instanceof` + `Something`.
+
+Specify a `word` token to fix this:
+
+```javascript
+export default grammar({
+  name: 'javascript',
+  
+  word: $ => $.identifier,
+  
+  rules: {
+    identifier: $ => /[a-z_]+/,
+    
+    binary_expression: $ => prec.left(1, seq(
+      $.expression,
+      'instanceof',  // Keyword
+      $.expression
+    )),
+    
+    unary_expression: $ => prec.left(2, seq(
+      'typeof',  // Keyword
+      $.expression
+    ))
+  }
+});
+```
+
+### How It Works
+
+<Steps>
+  <Step title="Keyword extraction">
+    Tree-sitter finds all keyword tokens that match strings also matched by the `word` token.
+  </Step>
+  
+  <Step title="Two-step matching">
+    When parsing, Tree-sitter first matches the `word` token, then checks if it's a keyword.
+  </Step>
+  
+  <Step title="Better errors">
+    `instanceofSomething` correctly tokenizes as one identifier, so the parser can report better errors.
+  </Step>
+</Steps>
+
+<Tip>
+Keyword extraction also improves performance by generating a smaller, simpler lexing function.
+</Tip>
+
+<Note>
+The `word` token must be unique and not reused by another rule. If needed, use an alias instead.
+</Note>
+
+## Complete Example
+
+Here's a complete grammar demonstrating these concepts:
+
+```javascript grammar.js
+export default grammar({
+  name: 'mini_lang',
+  
+  extras: $ => [/\s/, $.comment],
+  
+  word: $ => $.identifier,
+  
+  supertypes: $ => [$._expression, $._statement],
+  
+  rules: {
+    source_file: $ => repeat($._statement),
+    
+    _statement: $ => choice(
+      $.expression_statement,
+      $.if_statement,
+      $.return_statement
+    ),
+    
+    expression_statement: $ => seq($.expression, ';'),
+    
+    if_statement: $ => seq(
+      'if',
+      field('condition', $.expression),
+      field('consequence', $.block),
+      optional(seq('else', field('alternative', $.block)))
+    ),
+    
+    return_statement: $ => seq(
+      'return',
+      optional($.expression),
+      ';'
+    ),
+    
+    block: $ => seq('{', repeat($._statement), '}'),
+    
+    _expression: $ => choice(
+      $.identifier,
+      $.number,
+      $.binary_expression,
+      $.call_expression
+    ),
+    
+    binary_expression: $ => choice(
+      prec.left(2, seq(
+        field('left', $.expression),
+        field('operator', choice('*', '/')),
+        field('right', $.expression)
+      )),
+      prec.left(1, seq(
+        field('left', $.expression),
+        field('operator', choice('+', '-')),
+        field('right', $.expression)
+      ))
+    ),
+    
+    call_expression: $ => seq(
+      field('function', $.identifier),
+      '(',
+      optional(seq(
+        $.expression,
+        repeat(seq(',', $.expression))
+      )),
+      ')'
+    ),
+    
+    identifier: $ => /[a-zA-Z_][a-zA-Z0-9_]*/,
+    number: $ => /\d+/,
+    
+    comment: $ => token(choice(
+      seq('//', /.*/),
+      seq('/*', /[^*]*\*+([^/*][^*]*\*+)*/, '/')
+    ))
+  }
+});
+```
+
+## Next Steps
+
+Now that you understand grammar writing:
+
+- Learn about [External Scanners](/creating-parsers/external-scanners) for complex lexical rules
+- Write [Tests](/creating-parsers/testing) for your grammar
+- [Publish](/creating-parsers/publishing) your parser

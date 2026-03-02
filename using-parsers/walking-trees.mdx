@@ -1,0 +1,331 @@
+---
+title: Walking Trees with Tree Cursors
+description: Efficiently traverse syntax trees using tree cursors
+---
+
+## Introduction
+
+You can access every node in a syntax tree using the `TSNode` APIs described in [Basic Parsing](/using-parsers/basic-parsing), but if you need to access a large number of nodes, the fastest way to do so is with a **tree cursor**.
+
+A cursor is a stateful object that allows you to walk a syntax tree with maximum efficiency by maintaining state about the current position in the tree.
+
+## Creating a Tree Cursor
+
+You can initialize a cursor from any node:
+
+```c
+TSTreeCursor ts_tree_cursor_new(TSNode);
+```
+
+<CodeGroup>
+```c C
+TSNode root = ts_tree_root_node(tree);
+TSTreeCursor cursor = ts_tree_cursor_new(root);
+
+// Use the cursor...
+
+// Clean up
+ts_tree_cursor_delete(&cursor);
+```
+
+```rust Rust
+let root = tree.root_node();
+let mut cursor = root.walk();
+
+// Use the cursor...
+// Automatically cleaned up when dropped
+```
+
+```javascript JavaScript
+const root = tree.rootNode;
+const cursor = root.walk();
+
+// Use the cursor...
+// Automatically cleaned up by garbage collection
+```
+</CodeGroup>
+
+<Warning>
+  The node you pass to the cursor is considered the **root** of the cursor. The cursor cannot walk outside this node. Going to the parent or any sibling of the root node will always return `false`.
+  
+  This has no unexpected effects if the given input node is the actual root node of the tree, but is something to keep in mind when using cursors constructed with a non-root node.
+</Warning>
+
+## Moving the Cursor
+
+Once you have a cursor, you can move it around the tree imperatively:
+
+```c
+bool ts_tree_cursor_goto_first_child(TSTreeCursor *);
+bool ts_tree_cursor_goto_next_sibling(TSTreeCursor *);
+bool ts_tree_cursor_goto_previous_sibling(TSTreeCursor *);
+bool ts_tree_cursor_goto_parent(TSTreeCursor *);
+```
+
+These methods return `true` if the cursor successfully moved and `false` if there was no node to move to.
+
+### Navigation Functions
+
+<ParamField path="goto_first_child" type="bool">
+  Move the cursor to the first child of its current node. Returns `true` if the cursor successfully moved, `false` if there were no children.
+</ParamField>
+
+<ParamField path="goto_next_sibling" type="bool">
+  Move the cursor to the next sibling of its current node. Returns `true` if the cursor successfully moved, `false` if there was no next sibling.
+</ParamField>
+
+<ParamField path="goto_previous_sibling" type="bool">
+  Move the cursor to the previous sibling of its current node. Returns `true` if the cursor successfully moved, `false` if there was no previous sibling.
+  
+  <Note>This function may be slower than `goto_next_sibling` due to how node positions are stored. In the worst case, this will need to iterate through all the children up to the previous sibling node to recalculate its position.</Note>
+</ParamField>
+
+<ParamField path="goto_parent" type="bool">
+  Move the cursor to the parent of its current node. Returns `true` if the cursor successfully moved, `false` if there was no parent node (cursor was already on the root).
+</ParamField>
+
+## Retrieving the Current Node
+
+You can always retrieve the cursor's current node, as well as the field name associated with the current node:
+
+```c
+TSNode ts_tree_cursor_current_node(const TSTreeCursor *);
+const char *ts_tree_cursor_current_field_name(const TSTreeCursor *);
+TSFieldId ts_tree_cursor_current_field_id(const TSTreeCursor *);
+```
+
+<CodeGroup>
+```c C
+TSTreeCursor cursor = ts_tree_cursor_new(root);
+
+TSNode node = ts_tree_cursor_current_node(&cursor);
+const char *field_name = ts_tree_cursor_current_field_name(&cursor);
+
+if (field_name) {
+  printf("Current node type: %s, field: %s\n",
+         ts_node_type(node), field_name);
+} else {
+  printf("Current node type: %s\n", ts_node_type(node));
+}
+```
+
+```rust Rust
+let mut cursor = root.walk();
+
+let node = cursor.node();
+if let Some(field_name) = cursor.field_name() {
+    println!("Current node type: {}, field: {}",
+             node.kind(), field_name);
+} else {
+    println!("Current node type: {}", node.kind());
+}
+```
+
+```javascript JavaScript
+const cursor = root.walk();
+
+const node = cursor.currentNode;
+const fieldName = cursor.currentFieldName;
+
+if (fieldName) {
+  console.log(`Current node type: ${node.type}, field: ${fieldName}`);
+} else {
+  console.log(`Current node type: ${node.type}`);
+}
+```
+</CodeGroup>
+
+## Complete Example: Tree Traversal
+
+Here's a complete example that demonstrates how to traverse an entire tree using a cursor:
+
+<CodeGroup>
+```c C
+#include <stdio.h>
+#include <tree_sitter/api.h>
+
+void print_tree(TSTreeCursor *cursor, int depth) {
+  TSNode node = ts_tree_cursor_current_node(cursor);
+  const char *type = ts_node_type(node);
+  const char *field = ts_tree_cursor_current_field_name(cursor);
+  
+  // Print indentation
+  for (int i = 0; i < depth; i++) {
+    printf("  ");
+  }
+  
+  // Print node info
+  if (field) {
+    printf("%s: %s\n", field, type);
+  } else {
+    printf("%s\n", type);
+  }
+  
+  // Visit children
+  if (ts_tree_cursor_goto_first_child(cursor)) {
+    do {
+      print_tree(cursor, depth + 1);
+    } while (ts_tree_cursor_goto_next_sibling(cursor));
+    ts_tree_cursor_goto_parent(cursor);
+  }
+}
+
+int main() {
+  // ... setup parser and parse code ...
+  TSNode root = ts_tree_root_node(tree);
+  TSTreeCursor cursor = ts_tree_cursor_new(root);
+  
+  print_tree(&cursor, 0);
+  
+  ts_tree_cursor_delete(&cursor);
+  ts_tree_delete(tree);
+  ts_parser_delete(parser);
+  return 0;
+}
+```
+
+```rust Rust
+fn print_tree(cursor: &mut TreeCursor, depth: usize) {
+    let node = cursor.node();
+    let field_name = cursor.field_name();
+    
+    // Print indentation
+    for _ in 0..depth {
+        print!("  ");
+    }
+    
+    // Print node info
+    if let Some(field) = field_name {
+        println!("{}: {}", field, node.kind());
+    } else {
+        println!("{}", node.kind());
+    }
+    
+    // Visit children
+    if cursor.goto_first_child() {
+        loop {
+            print_tree(cursor, depth + 1);
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+        cursor.goto_parent();
+    }
+}
+
+fn main() {
+    // ... setup parser and parse code ...
+    let root = tree.root_node();
+    let mut cursor = root.walk();
+    
+    print_tree(&mut cursor, 0);
+}
+```
+
+```javascript JavaScript
+function printTree(cursor, depth = 0) {
+  const node = cursor.currentNode;
+  const field = cursor.currentFieldName;
+  
+  // Print indentation
+  const indent = '  '.repeat(depth);
+  
+  // Print node info
+  if (field) {
+    console.log(`${indent}${field}: ${node.type}`);
+  } else {
+    console.log(`${indent}${node.type}`);
+  }
+  
+  // Visit children
+  if (cursor.gotoFirstChild()) {
+    do {
+      printTree(cursor, depth + 1);
+    } while (cursor.gotoNextSibling());
+    cursor.gotoParent();
+  }
+}
+
+// ... setup parser and parse code ...
+const root = tree.rootNode;
+const cursor = root.walk();
+
+printTree(cursor);
+```
+</CodeGroup>
+
+## Advanced Cursor Operations
+
+### Jumping to a Specific Descendant
+
+You can jump directly to the nth descendant of the cursor's root:
+
+```c
+void ts_tree_cursor_goto_descendant(TSTreeCursor *self, uint32_t goal_descendant_index);
+uint32_t ts_tree_cursor_current_descendant_index(const TSTreeCursor *self);
+```
+
+### Getting Depth Information
+
+```c
+uint32_t ts_tree_cursor_current_depth(const TSTreeCursor *self);
+```
+
+### Position-based Navigation
+
+You can jump to the first child that contains or starts after a given position:
+
+```c
+int64_t ts_tree_cursor_goto_first_child_for_byte(TSTreeCursor *self, uint32_t goal_byte);
+int64_t ts_tree_cursor_goto_first_child_for_point(TSTreeCursor *self, TSPoint goal_point);
+```
+
+These functions return the index of the child node if one was found, and `-1` if no such child was found.
+
+### Copying and Resetting Cursors
+
+```c
+TSTreeCursor ts_tree_cursor_copy(const TSTreeCursor *cursor);
+void ts_tree_cursor_reset(TSTreeCursor *self, TSNode node);
+void ts_tree_cursor_reset_to(TSTreeCursor *dst, const TSTreeCursor *src);
+```
+
+<Tip>
+  Use `ts_tree_cursor_reset_to` to reset a cursor to the same position as another cursor. Unlike `ts_tree_cursor_reset`, this will not lose parent information and allows reusing already created cursors.
+</Tip>
+
+## Performance Considerations
+
+<AccordionGroup>
+  <Accordion title="Why use cursors instead of TSNode?">
+    Tree cursors are significantly more efficient than `TSNode` operations when traversing large portions of the tree because:
+    
+    - Cursors maintain state about the current position, avoiding repeated lookups
+    - Memory allocation is minimized
+    - Navigation operations are optimized for sequential access
+    
+    For accessing a small number of nodes, the `TSNode` API is more convenient and sufficient.
+  </Accordion>
+  
+  <Accordion title="Previous sibling performance">
+    The `goto_previous_sibling` operation may be slower than `goto_next_sibling` because node positions are stored in a way that's optimized for forward traversal. In the worst case, it needs to iterate through all children up to the previous sibling to recalculate its position.
+    
+    If you need to traverse siblings in reverse order, consider collecting them in forward order first, then iterating the collection in reverse.
+  </Accordion>
+  
+  <Accordion title="Cursor scope limitations">
+    Remember that cursors are scoped to the node they were created from. If you create a cursor from a non-root node, the cursor cannot navigate outside that subtree. This is useful for limiting traversal to a specific portion of the tree.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Pattern Matching" icon="magnifying-glass" href="/using-parsers/pattern-matching">
+    Learn how to query syntax trees with patterns
+  </Card>
+  
+  <Card title="Static Node Types" icon="file-code" href="/using-parsers/static-node-types">
+    Generate type information for your language
+  </Card>
+</CardGroup>

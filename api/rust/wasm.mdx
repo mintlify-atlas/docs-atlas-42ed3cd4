@@ -1,0 +1,295 @@
+---
+title: Wasm Support
+description: API reference for WebAssembly grammar support in Rust
+---
+
+Tree-sitter's Rust bindings support loading grammar files compiled to WebAssembly. This allows you to use languages without needing to compile them natively.
+
+<Note>
+Wasm support requires enabling the `wasm` feature in your `Cargo.toml`:
+
+```toml
+[dependencies]
+tree-sitter = { version = "0.24", features = ["wasm"] }
+```
+</Note>
+
+## WasmStore
+
+A `WasmStore` manages WebAssembly language instances.
+
+### new
+
+```rust
+pub fn new(engine: &wasmtime::Engine) -> Result<Self, WasmError>
+```
+
+Create a new Wasm store.
+
+<ParamField path="engine" type="&wasmtime::Engine" required>
+  The Wasmtime engine to use for executing WebAssembly code
+</ParamField>
+
+**Returns:** `Ok(WasmStore)` on success, or `Err(WasmError)` if the store could not be created.
+
+```rust
+use tree_sitter::{wasmtime::Engine, WasmStore};
+
+let engine = Engine::default();
+let store = WasmStore::new(&engine).unwrap();
+```
+
+### load_language
+
+```rust
+pub fn load_language(&mut self, name: &str, bytes: &[u8]) -> Result<Language, WasmError>
+```
+
+Load a language from a Wasm file.
+
+<ParamField path="name" type="&str" required>
+  The name of the language (for debugging purposes)
+</ParamField>
+
+<ParamField path="bytes" type="&[u8]" required>
+  The bytes of the compiled Wasm file
+</ParamField>
+
+**Returns:** `Ok(Language)` on success, or `Err(WasmError)` if the language could not be loaded.
+
+```rust
+const JAVASCRIPT_GRAMMAR: &[u8] = include_bytes!("path/to/tree-sitter-javascript.wasm");
+
+let mut store = WasmStore::new(&engine).unwrap();
+let javascript = store
+    .load_language("javascript", JAVASCRIPT_GRAMMAR)
+    .unwrap();
+```
+
+### language_count
+
+```rust
+pub fn language_count(&self) -> usize
+```
+
+Get the number of languages currently loaded in this store.
+
+```rust
+println!("Loaded languages: {}", store.language_count());
+```
+
+## Parser Extensions
+
+When the `wasm` feature is enabled, the `Parser` struct gains additional methods for working with WebAssembly.
+
+### set_wasm_store
+
+```rust
+pub fn set_wasm_store(&mut self, store: WasmStore) -> Result<(), LanguageError>
+```
+
+Set the Wasm store that the parser should use. This is required before you can parse with a Wasm-based language.
+
+<ParamField path="store" type="WasmStore" required>
+  The Wasm store to use
+</ParamField>
+
+**Returns:** `Ok(())` on success, or `Err(LanguageError)` if the store could not be set.
+
+```rust
+let mut parser = Parser::new();
+parser.set_wasm_store(store).unwrap();
+```
+
+<Note>
+The store may be loaded from a different `WasmStore` than the one set on the parser, but it must use the same underlying `WasmEngine`.
+</Note>
+
+### take_wasm_store
+
+```rust
+pub fn take_wasm_store(&mut self) -> Option<WasmStore>
+```
+
+Take ownership of the parser's Wasm store, removing it from the parser.
+
+**Returns:** `Some(WasmStore)` if the parser has a store, or `None` if it doesn't.
+
+```rust
+if let Some(store) = parser.take_wasm_store() {
+    println!("Took Wasm store with {} languages", store.language_count());
+}
+```
+
+## Language Extensions
+
+When the `wasm` feature is enabled, the `Language` struct gains additional methods.
+
+### is_wasm
+
+```rust
+pub fn is_wasm(&self) -> bool
+```
+
+Check if this language is loaded from WebAssembly.
+
+```rust
+if language.is_wasm() {
+    println!("This is a Wasm-based language");
+}
+```
+
+## WasmError
+
+Errors that can occur when working with WebAssembly grammars.
+
+```rust
+pub struct WasmError {
+    pub kind: WasmErrorKind,
+    pub message: String,
+}
+```
+
+<ParamField path="kind" type="WasmErrorKind">
+  The kind of error that occurred
+</ParamField>
+
+<ParamField path="message" type="String">
+  A human-readable error message
+</ParamField>
+
+### WasmErrorKind
+
+```rust
+pub enum WasmErrorKind {
+    Parse,
+    Compile,
+    Instantiate,
+    Other,
+}
+```
+
+<ParamField path="Parse" type="variant">
+  Failed to parse the Wasm file
+</ParamField>
+
+<ParamField path="Compile" type="variant">
+  Failed to compile the Wasm file
+</ParamField>
+
+<ParamField path="Instantiate" type="variant">
+  Failed to instantiate the Wasm module
+</ParamField>
+
+<ParamField path="Other" type="variant">
+  An unknown error occurred
+</ParamField>
+
+## Complete Example
+
+Here's a complete example of using WebAssembly grammars:
+
+```rust
+use tree_sitter::{wasmtime::Engine, Parser, WasmStore};
+
+// Include the Wasm grammar file at compile time
+const JAVASCRIPT_GRAMMAR: &[u8] = include_bytes!("tree-sitter-javascript.wasm");
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Create a Wasmtime engine
+    let engine = Engine::default();
+    
+    // Create a Wasm store
+    let mut store = WasmStore::new(&engine)?;
+    
+    // Load the JavaScript grammar
+    let javascript = store.load_language("javascript", JAVASCRIPT_GRAMMAR)?;
+    
+    // Create a parser and set the Wasm store
+    let mut parser = Parser::new();
+    parser.set_wasm_store(store)?;
+    
+    // Set the language
+    parser.set_language(&javascript)?;
+    
+    // Parse some code
+    let source_code = "let x = 1;";
+    let tree = parser.parse(source_code, None).unwrap();
+    
+    // Use the tree
+    println!("Root: {}", tree.root_node().to_sexp());
+    
+    Ok(())
+}
+```
+
+## Using Multiple Wasm Languages
+
+```rust
+use tree_sitter::{wasmtime::Engine, Parser, WasmStore};
+
+const JAVASCRIPT_GRAMMAR: &[u8] = include_bytes!("tree-sitter-javascript.wasm");
+const PYTHON_GRAMMAR: &[u8] = include_bytes!("tree-sitter-python.wasm");
+
+let engine = Engine::default();
+let mut store = WasmStore::new(&engine).unwrap();
+
+// Load multiple languages into the same store
+let javascript = store.load_language("javascript", JAVASCRIPT_GRAMMAR).unwrap();
+let python = store.load_language("python", PYTHON_GRAMMAR).unwrap();
+
+println!("Loaded {} languages", store.language_count());
+
+// Use the languages
+let mut parser = Parser::new();
+parser.set_wasm_store(store).unwrap();
+
+// Parse JavaScript
+parser.set_language(&javascript).unwrap();
+let js_tree = parser.parse("const x = 1;", None).unwrap();
+
+// Parse Python
+parser.set_language(&python).unwrap();
+let py_tree = parser.parse("x = 1", None).unwrap();
+```
+
+## Performance Considerations
+
+While WebAssembly grammars provide flexibility, there are some performance considerations:
+
+- **Initialization:** Loading and compiling Wasm modules has a one-time cost
+- **Runtime:** Wasm-based parsers are generally slightly slower than native parsers
+- **Memory:** Each `WasmStore` maintains its own runtime state
+
+For best performance:
+- Reuse `WasmStore` instances when possible
+- Load languages once during application startup
+- Consider using native grammars for performance-critical applications
+
+## Error Handling
+
+```rust
+use tree_sitter::{WasmError, WasmErrorKind};
+
+match store.load_language("javascript", JAVASCRIPT_GRAMMAR) {
+    Ok(language) => {
+        println!("Loaded language successfully");
+    }
+    Err(WasmError { kind, message }) => {
+        match kind {
+            WasmErrorKind::Parse => {
+                eprintln!("Failed to parse Wasm file: {}", message);
+            }
+            WasmErrorKind::Compile => {
+                eprintln!("Failed to compile Wasm: {}", message);
+            }
+            WasmErrorKind::Instantiate => {
+                eprintln!("Failed to instantiate module: {}", message);
+            }
+            WasmErrorKind::Other => {
+                eprintln!("Unknown error: {}", message);
+            }
+        }
+    }
+}
+```

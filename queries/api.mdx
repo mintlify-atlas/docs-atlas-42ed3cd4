@@ -1,0 +1,447 @@
+---
+title: Query API Reference
+description: C API reference for creating and executing Tree-sitter queries
+---
+
+The Query API provides functions to create, execute, and manage queries programmatically. This reference covers the C API, which is the foundation for language bindings.
+
+## Creating Queries
+
+### `ts_query_new`
+
+Create a query by specifying a string containing one or more patterns.
+
+```c
+TSQuery *ts_query_new(
+  const TSLanguage *language,
+  const char *source,
+  uint32_t source_len,
+  uint32_t *error_offset,
+  TSQueryError *error_type
+);
+```
+
+#### Parameters
+
+<ParamField path="language" type="const TSLanguage*" required>
+  The language to create the query for. Must match the grammar used to parse the target syntax trees.
+</ParamField>
+
+<ParamField path="source" type="const char*" required>
+  A string containing one or more query patterns written in the query syntax.
+</ParamField>
+
+<ParamField path="source_len" type="uint32_t" required>
+  The length of the source string in bytes.
+</ParamField>
+
+<ParamField path="error_offset" type="uint32_t*">
+  Output parameter. If there's an error, this will be set to the byte offset where the error occurred.
+</ParamField>
+
+<ParamField path="error_type" type="TSQueryError*">
+  Output parameter. If there's an error, this will be set to the error type.
+</ParamField>
+
+#### Returns
+
+A pointer to a `TSQuery` object, or `NULL` if there was an error.
+
+#### Error Handling
+
+If the query has syntax errors or references invalid node types or fields, the function still returns a `TSQuery`, but `error_offset` and `error_type` indicate the problem.
+
+<Note>
+The `TSQuery` value is immutable and can be safely shared between threads.
+</Note>
+
+## Error Types
+
+### `TSQueryError`
+
+Enumerates possible query errors:
+
+```c
+typedef enum {
+  TSQueryErrorNone = 0,
+  TSQueryErrorSyntax,
+  TSQueryErrorNodeType,
+  TSQueryErrorField,
+  TSQueryErrorCapture,
+} TSQueryError;
+```
+
+<ResponseField name="TSQueryErrorNone" type="0">
+  No error occurred. The query is valid.
+</ResponseField>
+
+<ResponseField name="TSQueryErrorSyntax">
+  The query has a syntax error. Check the S-expression structure.
+</ResponseField>
+
+<ResponseField name="TSQueryErrorNodeType">
+  The query references a node type that doesn't exist in the grammar.
+</ResponseField>
+
+<ResponseField name="TSQueryErrorField">
+  The query references a field name that doesn't exist in the grammar.
+</ResponseField>
+
+<ResponseField name="TSQueryErrorCapture">
+  The query has an invalid capture name or usage.
+</ResponseField>
+
+## Creating Query Cursors
+
+### `ts_query_cursor_new`
+
+Create a cursor for executing queries.
+
+```c
+TSQueryCursor *ts_query_cursor_new(void);
+```
+
+#### Returns
+
+A pointer to a new `TSQueryCursor` object.
+
+<Warning>
+Query cursors carry mutable state and should **not** be shared between threads. However, they can be reused for multiple query executions.
+</Warning>
+
+## Executing Queries
+
+### `ts_query_cursor_exec`
+
+Execute a query on a syntax node.
+
+```c
+void ts_query_cursor_exec(
+  TSQueryCursor *cursor,
+  const TSQuery *query,
+  TSNode node
+);
+```
+
+#### Parameters
+
+<ParamField path="cursor" type="TSQueryCursor*" required>
+  The query cursor to use for execution.
+</ParamField>
+
+<ParamField path="query" type="const TSQuery*" required>
+  The query to execute.
+</ParamField>
+
+<ParamField path="node" type="TSNode" required>
+  The syntax tree node to search within. The query will match against this node and all its descendants.
+</ParamField>
+
+## Iterating Over Matches
+
+### Data Structures
+
+The API provides structures for representing captures and matches:
+
+```c
+typedef struct {
+  TSNode node;
+  uint32_t index;
+} TSQueryCapture;
+
+typedef struct {
+  uint32_t id;
+  uint16_t pattern_index;
+  uint16_t capture_count;
+  const TSQueryCapture *captures;
+} TSQueryMatch;
+```
+
+<ResponseField name="TSQueryCapture">
+  Represents a single captured node.
+  
+  - `node`: The captured syntax tree node
+  - `index`: The index of the capture in the query (corresponds to the order of `@capture` names)
+</ResponseField>
+
+<ResponseField name="TSQueryMatch">
+  Represents a complete pattern match.
+  
+  - `id`: Unique identifier for this match
+  - `pattern_index`: Which pattern in the query matched (0-based)
+  - `capture_count`: Number of captures in this match
+  - `captures`: Array of captured nodes
+</ResponseField>
+
+### `ts_query_cursor_next_match`
+
+Retrieve the next match from the query cursor.
+
+```c
+bool ts_query_cursor_next_match(
+  TSQueryCursor *cursor,
+  TSQueryMatch *match
+);
+```
+
+#### Parameters
+
+<ParamField path="cursor" type="TSQueryCursor*" required>
+  The query cursor to retrieve matches from.
+</ParamField>
+
+<ParamField path="match" type="TSQueryMatch*" required>
+  Output parameter. Will be populated with the next match's data.
+</ParamField>
+
+#### Returns
+
+- `true` if a match was found and `match` was populated
+- `false` if there are no more matches
+
+## Example Usage
+
+### Basic Query Execution
+
+```c
+// Create a query
+const char *query_source = "(function_declaration name: (identifier) @func-name)";
+uint32_t error_offset;
+TSQueryError error_type;
+
+TSQuery *query = ts_query_new(
+  language,
+  query_source,
+  strlen(query_source),
+  &error_offset,
+  &error_type
+);
+
+if (error_type != TSQueryErrorNone) {
+  fprintf(stderr, "Query error at offset %u: %d\n", error_offset, error_type);
+  return;
+}
+
+// Create a cursor
+TSQueryCursor *cursor = ts_query_cursor_new();
+
+// Execute the query on a syntax tree node
+ts_query_cursor_exec(cursor, query, root_node);
+
+// Iterate over matches
+TSQueryMatch match;
+while (ts_query_cursor_next_match(cursor, &match)) {
+  printf("Match found with %u captures\n", match.capture_count);
+  
+  for (uint32_t i = 0; i < match.capture_count; i++) {
+    TSQueryCapture capture = match.captures[i];
+    // Process captured node
+    uint32_t start = ts_node_start_byte(capture.node);
+    uint32_t end = ts_node_end_byte(capture.node);
+    printf("  Capture %u at bytes %u-%u\n", capture.index, start, end);
+  }
+}
+
+// Clean up
+ts_query_cursor_delete(cursor);
+ts_query_delete(query);
+```
+
+### Error Handling
+
+```c
+TSQuery *create_query_safe(
+  const TSLanguage *language,
+  const char *source
+) {
+  uint32_t error_offset;
+  TSQueryError error_type;
+  uint32_t source_len = strlen(source);
+  
+  TSQuery *query = ts_query_new(
+    language,
+    source,
+    source_len,
+    &error_offset,
+    &error_type
+  );
+  
+  if (error_type != TSQueryErrorNone) {
+    const char *error_name;
+    switch (error_type) {
+      case TSQueryErrorSyntax:
+        error_name = "Syntax error";
+        break;
+      case TSQueryErrorNodeType:
+        error_name = "Invalid node type";
+        break;
+      case TSQueryErrorField:
+        error_name = "Invalid field";
+        break;
+      case TSQueryErrorCapture:
+        error_name = "Invalid capture";
+        break;
+      default:
+        error_name = "Unknown error";
+    }
+    
+    fprintf(stderr, "%s at offset %u\n", error_name, error_offset);
+    
+    // Print context around error
+    uint32_t start = error_offset > 20 ? error_offset - 20 : 0;
+    uint32_t end = error_offset + 20 < source_len ? error_offset + 20 : source_len;
+    fprintf(stderr, "Context: %.*s\n", end - start, &source[start]);
+    
+    if (query) {
+      ts_query_delete(query);
+    }
+    return NULL;
+  }
+  
+  return query;
+}
+```
+
+### Reusing Query Cursors
+
+```c
+// Query cursors can be reused for better performance
+TSQueryCursor *cursor = ts_query_cursor_new();
+
+// Execute on first tree
+ts_query_cursor_exec(cursor, query, tree1_root);
+TSQueryMatch match;
+while (ts_query_cursor_next_match(cursor, &match)) {
+  // Process matches from tree1
+}
+
+// Reuse for second tree
+ts_query_cursor_exec(cursor, query, tree2_root);
+while (ts_query_cursor_next_match(cursor, &match)) {
+  // Process matches from tree2
+}
+
+ts_query_cursor_delete(cursor);
+```
+
+## Memory Management
+
+<AccordionGroup>
+  <Accordion title="Query Lifecycle">
+    - Create with `ts_query_new()`
+    - Use across multiple threads (read-only)
+    - Delete with `ts_query_delete()` when done
+    - Deletion is thread-safe if no queries are executing
+  </Accordion>
+  
+  <Accordion title="Cursor Lifecycle">
+    - Create with `ts_query_cursor_new()`
+    - Use for one or more query executions (single thread)
+    - Delete with `ts_query_cursor_delete()` when done
+    - Do not share cursors between threads
+  </Accordion>
+  
+  <Accordion title="Match Data">
+    - `TSQueryMatch` is populated by reference
+    - The `captures` array is valid until the next call to `ts_query_cursor_next_match()`
+    - Copy data if you need to retain it longer
+  </Accordion>
+</AccordionGroup>
+
+## Advanced Features
+
+### Query Introspection
+
+Queries expose information about their structure:
+
+```c
+// Get the number of patterns in a query
+uint32_t pattern_count = ts_query_pattern_count(query);
+
+// Get the number of captures in a query
+uint32_t capture_count = ts_query_capture_count(query);
+
+// Get a capture name by index
+const char *capture_name = ts_query_capture_name_for_id(
+  query,
+  capture_index,
+  &name_length
+);
+```
+
+### Query Predicates
+
+Access predicates and directives programmatically:
+
+```c
+// Get predicates for a pattern
+uint32_t predicate_step_count;
+const TSQueryPredicateStep *predicate_steps = 
+  ts_query_predicates_for_pattern(
+    query,
+    pattern_index,
+    &predicate_step_count
+  );
+
+// Process predicate steps to implement filtering
+// (Implementation depends on your language binding)
+```
+
+<Note>
+Predicate evaluation is typically implemented in language bindings, not the C library. The C API exposes predicates in structured form for bindings to interpret.
+</Note>
+
+## Language Bindings
+
+Most users interact with queries through language bindings:
+
+<CardGroup cols={3}>
+  <Card title="Rust" icon="rust">
+    `tree-sitter` crate provides idiomatic Rust API with predicate support
+  </Card>
+  <Card title="JavaScript" icon="js">
+    `web-tree-sitter` and Node bindings offer promise-based APIs
+  </Card>
+  <Card title="Python" icon="python">
+    `tree-sitter` package provides Pythonic interface with predicate evaluation
+  </Card>
+</CardGroup>
+
+See language-specific documentation for:
+- Predicate implementation
+- Iterator patterns
+- Integration with language features
+
+## Performance Considerations
+
+<Steps>
+  <Step title="Share Queries">
+    Create queries once and share them across threads. Query creation has overhead, especially for complex patterns.
+  </Step>
+  <Step title="Reuse Cursors">
+    Within a thread, reuse query cursors for multiple executions. Cursor creation and deletion have some overhead.
+  </Step>
+  <Step title="Limit Query Scope">
+    Execute queries on the smallest node that contains your target. Don't query the entire tree if you only need a function body.
+  </Step>
+  <Step title="Optimize Patterns">
+    More specific patterns (with field names and node types) are faster than generic ones. Use wildcards sparingly.
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Query Syntax" icon="code" href="/queries/syntax">
+    Learn how to write query patterns
+  </Card>
+  <Card title="Predicates" icon="filter" href="/queries/predicates">
+    Understand how to implement and use predicates
+  </Card>
+  <Card title="Parsers" icon="book" href="/using-parsers/basic-parsing">
+    Learn about parsing and syntax trees
+  </Card>
+  <Card title="Language Bindings" icon="language" href="/using-parsers/language-bindings">
+    Explore Tree-sitter APIs in other languages
+  </Card>
+</CardGroup>

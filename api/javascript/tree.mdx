@@ -1,0 +1,399 @@
+---
+title: Tree Class
+description: API reference for the Tree-sitter Tree class in JavaScript/Wasm
+---
+
+The `Tree` class represents the syntactic structure of a source code file. It is returned by the `Parser.parse()` method and provides access to the root node of the syntax tree.
+
+## Properties
+
+### `rootNode`
+
+Get the root node of the syntax tree.
+
+```typescript
+readonly rootNode: Node
+```
+
+**Example:**
+
+```javascript
+const tree = parser.parse('let x = 1;');
+const root = tree.rootNode;
+
+console.log(root.type);        // 'program'
+console.log(root.childCount);  // 1
+```
+
+### `language`
+
+The language that was used to parse the syntax tree.
+
+```typescript
+readonly language: Language
+```
+
+**Example:**
+
+```javascript
+const tree = parser.parse('let x = 1;');
+console.log(tree.language.name); // 'javascript'
+```
+
+## Methods
+
+### `copy()`
+
+Create a shallow copy of the syntax tree. This is very fast.
+
+```typescript
+copy(): Tree
+```
+
+**Returns:** A new `Tree` instance that shares the same internal data
+
+**Example:**
+
+```javascript
+const tree1 = parser.parse('let x = 1;');
+const tree2 = tree1.copy();
+
+// Both trees represent the same parse
+console.log(tree1.rootNode.equals(tree2.rootNode)); // true
+
+// But they are separate objects
+console.log(tree1 === tree2); // false
+```
+
+<Note>
+Copying a tree is useful when you need to keep multiple versions around for comparison or to preserve a tree before editing.
+</Note>
+
+### `delete()`
+
+Delete the syntax tree and free its resources.
+
+```typescript
+delete(): void
+```
+
+**Example:**
+
+```javascript
+const tree = parser.parse('let x = 1;');
+// ... use tree ...
+tree.delete(); // Clean up
+```
+
+### `edit(edit)`
+
+Edit the syntax tree to keep it in sync with source code that has been edited.
+
+```typescript
+edit(edit: Edit): void
+```
+
+**Parameters:**
+- `edit` - An `Edit` object describing the change in both byte offsets and row/column coordinates
+
+**Example:**
+
+```javascript
+const sourceCode = 'let x = 1;';
+const tree = parser.parse(sourceCode);
+
+// Change 'let' to 'const'
+const newSourceCode = 'const x = 1;';
+
+tree.edit({
+  startIndex: 0,
+  oldEndIndex: 3,
+  newEndIndex: 5,
+  startPosition: { row: 0, column: 0 },
+  oldEndPosition: { row: 0, column: 3 },
+  newEndPosition: { row: 0, column: 5 },
+});
+
+// Re-parse with the edited tree for incremental parsing
+const newTree = parser.parse(newSourceCode, tree);
+```
+
+<Note>
+After calling `edit()`, you should pass the tree to `parser.parse()` as the second argument. This allows the parser to reuse parts of the old tree, making parsing much faster.
+</Note>
+
+### `walk()`
+
+Create a new `TreeCursor` starting from the root of the tree.
+
+```typescript
+walk(): TreeCursor
+```
+
+**Returns:** A `TreeCursor` positioned at the root node
+
+**Example:**
+
+```javascript
+const tree = parser.parse('let x = 1;');
+const cursor = tree.walk();
+
+console.log(cursor.nodeType); // 'program'
+
+if (cursor.gotoFirstChild()) {
+  console.log(cursor.nodeType); // 'lexical_declaration'
+}
+```
+
+<Note>
+Using a cursor is more efficient than recursively accessing nodes via properties, especially for deep traversals.
+</Note>
+
+### `rootNodeWithOffset(offsetBytes, offsetExtent)`
+
+Get the root node with its position shifted forward by the given offset.
+
+```typescript
+rootNodeWithOffset(offsetBytes: number, offsetExtent: Point): Node
+```
+
+**Parameters:**
+- `offsetBytes` - The byte offset to add
+- `offsetExtent` - The position offset to add
+
+**Returns:** A `Node` representing the root, but with adjusted positions
+
+**Example:**
+
+```javascript
+const tree = parser.parse('let x = 1;');
+
+// Get root node with positions offset
+const offsetRoot = tree.rootNodeWithOffset(100, { row: 10, column: 0 });
+
+console.log(offsetRoot.startIndex);    // 100 (instead of 0)
+console.log(offsetRoot.startPosition); // { row: 10, column: 0 }
+```
+
+<Note>
+This is useful when parsing embedded languages or when you need to map tree positions to different offsets in a larger document.
+</Note>
+
+### `getChangedRanges(other)`
+
+Compare this edited syntax tree to a new syntax tree representing the same document, returning the ranges whose syntactic structure has changed.
+
+```typescript
+getChangedRanges(other: Tree): Range[]
+```
+
+**Parameters:**
+- `other` - The new tree to compare against
+
+**Returns:** An array of `Range` objects representing the changed regions
+
+**Example:**
+
+```javascript
+const oldCode = 'let x = 1;';
+const newCode = 'const x = 1;';
+
+// Parse original
+const oldTree = parser.parse(oldCode);
+
+// Edit the tree
+oldTree.edit({
+  startIndex: 0,
+  oldEndIndex: 3,
+  newEndIndex: 5,
+  startPosition: { row: 0, column: 0 },
+  oldEndPosition: { row: 0, column: 3 },
+  newEndPosition: { row: 0, column: 5 },
+});
+
+// Re-parse
+const newTree = parser.parse(newCode, oldTree);
+
+// Get changed ranges
+const changes = oldTree.getChangedRanges(newTree);
+console.log(changes);
+// [{
+//   startPosition: { row: 0, column: 0 },
+//   endPosition: { row: 0, column: 5 },
+//   startIndex: 0,
+//   endIndex: 5
+// }]
+```
+
+<Note>
+For this to work correctly, you must call `tree.edit()` on the old tree before re-parsing. The ranges returned represent the minimal set of changes needed to update any cached information based on the tree.
+</Note>
+
+### `getIncludedRanges()`
+
+Get the ranges of text that were included when parsing the syntax tree.
+
+```typescript
+getIncludedRanges(): Range[]
+```
+
+**Returns:** An array of `Range` objects that were used during parsing
+
+**Example:**
+
+```javascript
+const ranges = [
+  {
+    startIndex: 0,
+    endIndex: 10,
+    startPosition: { row: 0, column: 0 },
+    endPosition: { row: 0, column: 10 },
+  },
+];
+
+const tree = parser.parse(sourceCode, null, { includedRanges: ranges });
+const included = tree.getIncludedRanges();
+
+console.log(included); // Same as 'ranges'
+```
+
+## Edit Class
+
+The `Edit` class represents an edit operation and provides helper methods for editing points and ranges.
+
+### Constructor
+
+```typescript
+class Edit {
+  constructor({
+    startIndex: number,
+    oldEndIndex: number,
+    newEndIndex: number,
+    startPosition: Point,
+    oldEndPosition: Point,
+    newEndPosition: Point,
+  })
+}
+```
+
+### Properties
+
+```typescript
+startIndex: number;      // The start index of the change
+oldEndIndex: number;     // The end index before the edit
+newEndIndex: number;     // The end index after the edit
+startPosition: Point;    // The start position of the change
+oldEndPosition: Point;   // The end position before the edit
+newEndPosition: Point;   // The end position after the edit
+```
+
+### Methods
+
+#### `editPoint(point, index)`
+
+Edit a point and index to keep them in sync with an edit operation.
+
+```typescript
+editPoint(point: Point, index: number): { point: Point; index: number }
+```
+
+**Example:**
+
+```javascript
+import { Edit } from 'web-tree-sitter';
+
+const edit = new Edit({
+  startIndex: 0,
+  oldEndIndex: 3,
+  newEndIndex: 5,
+  startPosition: { row: 0, column: 0 },
+  oldEndPosition: { row: 0, column: 3 },
+  newEndPosition: { row: 0, column: 5 },
+});
+
+const result = edit.editPoint({ row: 0, column: 10 }, 10);
+console.log(result);
+// { point: { row: 0, column: 12 }, index: 12 }
+```
+
+#### `editRange(range)`
+
+Edit a range to keep it in sync with an edit operation.
+
+```typescript
+editRange(range: Range): Range
+```
+
+**Example:**
+
+```javascript
+const range = {
+  startIndex: 5,
+  endIndex: 10,
+  startPosition: { row: 0, column: 5 },
+  endPosition: { row: 0, column: 10 },
+};
+
+const newRange = edit.editRange(range);
+console.log(newRange);
+```
+
+## Usage Patterns
+
+### Incremental Parsing
+
+The most common use of tree editing is for incremental parsing:
+
+```javascript
+let tree = parser.parse(sourceCode);
+
+// Later, when the code changes
+function handleEdit(startIndex, oldEndIndex, newEndIndex, startPos, oldEndPos, newEndPos) {
+  // 1. Edit the tree
+  tree.edit({
+    startIndex,
+    oldEndIndex,
+    newEndIndex,
+    startPosition: startPos,
+    oldEndPosition: oldEndPos,
+    newEndPosition: newEndPos,
+  });
+  
+  // 2. Re-parse with the old tree
+  const newTree = parser.parse(newSourceCode, tree);
+  
+  // 3. Get changed ranges if needed
+  const changes = tree.getChangedRanges(newTree);
+  
+  // 4. Update to use the new tree
+  tree.delete();
+  tree = newTree;
+  
+  return changes;
+}
+```
+
+### Preserving Trees
+
+Use `copy()` when you need to keep multiple versions:
+
+```javascript
+const history = [];
+
+let tree = parser.parse(sourceCode);
+history.push(tree.copy()); // Save a copy
+
+// Make changes...
+tree.edit(edit);
+tree = parser.parse(newCode, tree);
+history.push(tree.copy()); // Save another copy
+
+// Later, compare versions
+const changes = history[0].getChangedRanges(history[1]);
+```
+
+## See Also
+
+- [Parser class](/api/javascript/parser) - Creating and using parsers
+- [Node class](/api/javascript/node) - Working with tree nodes
+- [Query API](/api/javascript/query) - Querying syntax trees

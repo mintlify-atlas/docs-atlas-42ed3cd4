@@ -1,80 +1,545 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick start
+description: Get up and running with Tree-sitter in minutes
 ---
 
-## Get started in three steps
+This guide walks you through parsing your first source code file with Tree-sitter. We'll use real examples from the Tree-sitter codebase to show you the basics.
 
-Get your documentation site running locally and make your first customization.
+<Note>
+  Make sure you've [installed Tree-sitter](/installation) before starting this guide.
+</Note>
 
-### Step 1: Set up your local environment
+## Choose your language
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+<Tabs>
+  <Tab title="Rust">
+    ### Create a parser
+
+    First, import the necessary types and create a parser:
+
+    ```rust
+    use tree_sitter::{Parser, Language};
+
+    let mut parser = Parser::new();
+    ```
+
+    ### Set the language
+
+    Assign a language grammar to the parser. In this example, we'll use Rust:
+
+    ```rust
+    parser.set_language(&tree_sitter_rust::LANGUAGE.into())
+        .expect("Error loading Rust grammar");
+    ```
+
+    ### Parse source code
+
+    Now parse some source code:
+
+    ```rust
+    let source_code = "fn test() {}";
+    let tree = parser.parse(source_code, None).unwrap();
+    let root_node = tree.root_node();
+
+    assert_eq!(root_node.kind(), "source_file");
+    assert_eq!(root_node.start_position().column, 0);
+    assert_eq!(root_node.end_position().column, 12);
+    ```
+
+    ### Inspect the tree
+
+    Access the syntax tree structure:
+
+    ```rust
+    println!("Root node kind: {}", root_node.kind());
+    println!("Start position: {:?}", root_node.start_position());
+    println!("End position: {:?}", root_node.end_position());
+    println!("S-expression: {}", root_node.to_sexp());
+    ```
+
+    <Tip>
+      The `to_sexp()` method returns a string representation of the tree in S-expression format, which is useful for debugging.
+    </Tip>
+
+    ### Parse from multiple lines
+
+    You can parse source code from custom data structures using a callback:
+
+    ```rust
+    use tree_sitter::Point;
+
+    // Store source code in an array of lines
+    let lines = &[
+        "pub fn foo() {",
+        "  1",
+        "}",
+    ];
+
+    // Parse using a custom callback
+    let tree = parser.parse_with(&mut |_byte: usize, position: Point| -> &[u8] {
+        let row = position.row as usize;
+        let column = position.column as usize;
+        if row < lines.len() {
+            if column < lines[row].as_bytes().len() {
+                &lines[row].as_bytes()[column..]
+            } else {
+                b"\n"
+            }
+        } else {
+            &[]
+        }
+    }, None).unwrap();
+
+    assert_eq!(
+      tree.root_node().to_sexp(),
+      "(source_file (function_item (visibility_modifier) (identifier) (parameters) (block (number_literal))))"
+    );
+    ```
+  </Tab>
+
+  <Tab title="JavaScript/TypeScript">
+    ### Create a parser
+
+    First, initialize Tree-sitter and create a parser:
+
+    ```javascript
+    import { Parser } from 'web-tree-sitter';
+
+    await Parser.init();
+    const parser = new Parser();
+    ```
+
+    ### Load and set the language
+
+    Load a language grammar from a `.wasm` file:
+
+    ```javascript
+    const JavaScript = await Parser.Language.load('/path/to/tree-sitter-javascript.wasm');
+    parser.setLanguage(JavaScript);
+    ```
+
+    ### Parse source code
+
+    Now parse some JavaScript code:
+
+    ```javascript
+    const sourceCode = 'let x = 1; console.log(x);';
+    const tree = parser.parse(sourceCode);
+    ```
+
+    ### Inspect the tree
+
+    Access the syntax tree structure:
+
+    ```javascript
+    console.log(tree.rootNode.toString());
+
+    // Output:
+    // (program
+    //   (lexical_declaration
+    //     (variable_declarator (identifier) (number)))
+    //   (expression_statement
+    //     (call_expression
+    //       (member_expression (identifier) (property_identifier))
+    //       (arguments (identifier)))))
+
+    const callExpression = tree.rootNode.child(1).firstChild;
+    console.log(callExpression);
+
+    // Output:
+    // { type: 'call_expression',
+    //   startPosition: {row: 0, column: 16},
+    //   endPosition: {row: 0, column: 30},
+    //   startIndex: 16,
+    //   endIndex: 30 }
+    ```
+
+    ### Parse from multiple lines
+
+    Parse source code stored in a custom data structure:
+
+    ```javascript
+    const sourceLines = [
+      'let x = 1;',
+      'console.log(x);'
+    ];
+
+    const tree = parser.parse((index, position) => {
+      let line = sourceLines[position.row];
+      if (line) return line.slice(position.column);
+    });
+    ```
+  </Tab>
+
+  <Tab title="C">
+    ### Create a parser
+
+    First, include the Tree-sitter API and create a parser:
+
+    ```c
+    #include <assert.h>
+    #include <string.h>
+    #include <stdio.h>
+    #include <tree_sitter/api.h>
+
+    // Declare the language function
+    const TSLanguage *tree_sitter_json(void);
+
+    int main() {
+      // Create a parser
+      TSParser *parser = ts_parser_new();
+    ```
+
+    ### Set the language
+
+    Assign a language grammar to the parser:
+
+    ```c
+      // Set the parser's language (JSON in this case)
+      ts_parser_set_language(parser, tree_sitter_json());
+    ```
+
+    ### Parse source code
+
+    Parse a string containing source code:
+
+    ```c
+      // Build a syntax tree
+      const char *source_code = "[1, null]";
+      TSTree *tree = ts_parser_parse_string(
+        parser,
+        NULL,
+        source_code,
+        strlen(source_code)
+      );
+    ```
+
+    ### Inspect the tree
+
+    Access nodes and verify the structure:
+
+    ```c
+      // Get the root node
+      TSNode root_node = ts_tree_root_node(tree);
+
+      // Get child nodes
+      TSNode array_node = ts_node_named_child(root_node, 0);
+      TSNode number_node = ts_node_named_child(array_node, 0);
+
+      // Check node types
+      assert(strcmp(ts_node_type(root_node), "document") == 0);
+      assert(strcmp(ts_node_type(array_node), "array") == 0);
+      assert(strcmp(ts_node_type(number_node), "number") == 0);
+
+      // Check child counts
+      assert(ts_node_child_count(root_node) == 1);
+      assert(ts_node_child_count(array_node) == 5);
+      assert(ts_node_named_child_count(array_node) == 2);
+
+      // Print the syntax tree as an S-expression
+      char *string = ts_node_string(root_node);
+      printf("Syntax tree: %s\n", string);
+    ```
+
+    ### Clean up
+
+    Free all heap-allocated memory:
+
+    ```c
+      free(string);
+      ts_tree_delete(tree);
+      ts_parser_delete(parser);
+      return 0;
+    }
+    ```
+
+    ### Compile and run
+
+    Compile the program with the Tree-sitter library and language:
+
+    ```bash
+    clang \
+      -I tree-sitter/lib/include \
+      test-json-parser.c \
+      tree-sitter-json/src/parser.c \
+      tree-sitter/libtree-sitter.a \
+      -o test-json-parser
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+    ./test-json-parser
+    ```
+  </Tab>
+</Tabs>
 
-### Step 2: Deploy your changes
+## Working with syntax nodes
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+Syntax nodes are the building blocks of the syntax tree. Here's how to work with them:
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+### Node types and positions
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+<Tabs>
+  <Tab title="Rust">
+    ```rust
+    let source_code = "fn test() {}";
+    let tree = parser.parse(source_code, None).unwrap();
+    let root_node = tree.root_node();
 
-### Step 3: Go live
+    // Get node type
+    println!("Type: {}", root_node.kind());
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+    // Get positions (zero-based)
+    println!("Start byte: {}", root_node.start_byte());
+    println!("End byte: {}", root_node.end_byte());
+    println!("Start position: {:?}", root_node.start_position());
+    println!("End position: {:?}", root_node.end_position());
+    ```
+  </Tab>
+
+  <Tab title="JavaScript">
+    ```javascript
+    const sourceCode = 'let x = 1;';
+    const tree = parser.parse(sourceCode);
+    const rootNode = tree.rootNode;
+
+    // Get node type
+    console.log('Type:', rootNode.type);
+
+    // Get positions (zero-based)
+    console.log('Start byte:', rootNode.startIndex);
+    console.log('End byte:', rootNode.endIndex);
+    console.log('Start position:', rootNode.startPosition);
+    console.log('End position:', rootNode.endPosition);
+    ```
+  </Tab>
+
+  <Tab title="C">
+    ```c
+    TSNode root_node = ts_tree_root_node(tree);
+
+    // Get node type
+    const char *type = ts_node_type(root_node);
+
+    // Get positions (zero-based)
+    uint32_t start_byte = ts_node_start_byte(root_node);
+    uint32_t end_byte = ts_node_end_byte(root_node);
+    TSPoint start_pos = ts_node_start_point(root_node);
+    TSPoint end_pos = ts_node_end_point(root_node);
+    ```
+  </Tab>
+</Tabs>
+
+### Navigating the tree
+
+<Tabs>
+  <Tab title="Rust">
+    ```rust
+    // Access all children
+    let child_count = root_node.child_count();
+    for i in 0..child_count {
+        let child = root_node.child(i).unwrap();
+        println!("Child {}: {}", i, child.kind());
+    }
+
+    // Access named children only (skip tokens like punctuation)
+    let named_child_count = root_node.named_child_count();
+    for i in 0..named_child_count {
+        let child = root_node.named_child(i).unwrap();
+        println!("Named child {}: {}", i, child.kind());
+    }
+
+    // Navigate siblings and parent
+    if let Some(next_sibling) = root_node.next_sibling() {
+        println!("Next sibling: {}", next_sibling.kind());
+    }
+    ```
+  </Tab>
+
+  <Tab title="JavaScript">
+    ```javascript
+    // Access all children
+    for (let i = 0; i < rootNode.childCount; i++) {
+      const child = rootNode.child(i);
+      console.log(`Child ${i}: ${child.type}`);
+    }
+
+    // Access named children only (skip tokens like punctuation)
+    for (let i = 0; i < rootNode.namedChildCount; i++) {
+      const child = rootNode.namedChild(i);
+      console.log(`Named child ${i}: ${child.type}`);
+    }
+
+    // Navigate siblings and parent
+    if (rootNode.nextSibling) {
+      console.log('Next sibling:', rootNode.nextSibling.type);
+    }
+    ```
+  </Tab>
+
+  <Tab title="C">
+    ```c
+    // Access all children
+    uint32_t child_count = ts_node_child_count(root_node);
+    for (uint32_t i = 0; i < child_count; i++) {
+      TSNode child = ts_node_child(root_node, i);
+      printf("Child %d: %s\n", i, ts_node_type(child));
+    }
+
+    // Access named children only
+    uint32_t named_child_count = ts_node_named_child_count(root_node);
+    for (uint32_t i = 0; i < named_child_count; i++) {
+      TSNode child = ts_node_named_child(root_node, i);
+      printf("Named child %d: %s\n", i, ts_node_type(child));
+    }
+
+    // Navigate siblings
+    TSNode next_sibling = ts_node_next_sibling(root_node);
+    if (!ts_node_is_null(next_sibling)) {
+      printf("Next sibling: %s\n", ts_node_type(next_sibling));
+    }
+    ```
+  </Tab>
+</Tabs>
+
+<Tip>
+  Use the "named" variants of navigation methods (`named_child`, `next_named_sibling`, etc.) to work with the tree as an abstract syntax tree, skipping punctuation tokens.
+</Tip>
+
+## Incremental parsing
+
+One of Tree-sitter's key features is efficient incremental parsing. When source code changes, you can update the tree instead of reparsing from scratch:
+
+<Tabs>
+  <Tab title="Rust">
+    ```rust
+    use tree_sitter::{InputEdit, Point};
+
+    let source_code = "fn test() {}";
+    let mut tree = parser.parse(source_code, None).unwrap();
+
+    // The source code changed from "fn test() {}" to "fn test(a: u32) {}"
+    let new_source_code = "fn test(a: u32) {}";
+
+    // Tell the tree about the edit
+    tree.edit(&InputEdit {
+      start_byte: 8,
+      old_end_byte: 8,
+      new_end_byte: 14,
+      start_position: Point::new(0, 8),
+      old_end_position: Point::new(0, 8),
+      new_end_position: Point::new(0, 14),
+    });
+
+    // Reparse with the old tree for efficiency
+    let new_tree = parser.parse(new_source_code, Some(&tree));
+    ```
+  </Tab>
+
+  <Tab title="JavaScript">
+    ```javascript
+    let sourceCode = 'let x = 1;';
+    let tree = parser.parse(sourceCode);
+
+    // The source code changed from "let" to "const"
+    const newSourceCode = 'const x = 1;';
+
+    // Tell the tree about the edit
+    tree.edit({
+      startIndex: 0,
+      oldEndIndex: 3,
+      newEndIndex: 5,
+      startPosition: {row: 0, column: 0},
+      oldEndPosition: {row: 0, column: 3},
+      newEndPosition: {row: 0, column: 5},
+    });
+
+    // Reparse with the old tree for efficiency
+    const newTree = parser.parse(newSourceCode, tree);
+    ```
+  </Tab>
+
+  <Tab title="C">
+    ```c
+    const char *source_code = "[1, null]";
+    TSTree *tree = ts_parser_parse_string(parser, NULL, source_code, strlen(source_code));
+
+    // The source code changed
+    const char *new_source_code = "[1, 2, null]";
+
+    // Tell the tree about the edit
+    TSInputEdit edit = {
+      .start_byte = 3,
+      .old_end_byte = 3,
+      .new_end_byte = 6,
+      .start_point = {0, 3},
+      .old_end_point = {0, 3},
+      .new_end_point = {0, 6},
+    };
+    ts_tree_edit(tree, &edit);
+
+    // Reparse with the old tree for efficiency
+    TSTree *new_tree = ts_parser_parse_string(
+      parser,
+      tree,  // Pass the old tree
+      new_source_code,
+      strlen(new_source_code)
+    );
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  Incremental parsing is significantly faster than reparsing from scratch. Tree-sitter reuses unchanged portions of the tree, making it ideal for text editors and other real-time applications.
+</Note>
+
+## Using Wasm grammars (Rust)
+
+You can load language grammars compiled to WebAssembly:
+
+```rust
+use tree_sitter::{Parser, WasmStore};
+use tree_sitter::wasmtime::Engine;
+
+// Create a Wasm engine and store
+let engine = Engine::default();
+let mut store = WasmStore::new(&engine).unwrap();
+
+let mut parser = Parser::new();
+parser.set_wasm_store(store).unwrap();
+
+// Load a language from a Wasm file
+const JAVASCRIPT_GRAMMAR: &[u8] = include_bytes!("path/to/tree-sitter-javascript.wasm");
+
+let mut store = WasmStore::new(&engine).unwrap();
+let javascript = store
+    .load_language("javascript", JAVASCRIPT_GRAMMAR)
+    .unwrap();
+
+parser.set_language(&javascript).unwrap();
+
+// Now parse JavaScript code
+let source_code = "let x = 1;";
+let tree = parser.parse(source_code, None).unwrap();
+```
+
+<Note>
+  The `wasm` feature must be enabled in your `Cargo.toml` to use Wasm grammars.
+</Note>
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Using parsers" icon="book" href="/using-parsers">
+    Learn advanced parsing techniques and tree traversal
+  </Card>
+  
+  <Card title="Queries" icon="magnifying-glass" href="/queries">
+    Use Tree-sitter queries to search and analyze syntax trees
+  </Card>
+  
+  <Card title="Creating parsers" icon="wrench" href="/creating-parsers">
+    Write your own grammar to parse custom languages
+  </Card>
+  
+  <Card title="CLI reference" icon="terminal" href="/cli">
+    Explore CLI commands for testing and debugging grammars
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

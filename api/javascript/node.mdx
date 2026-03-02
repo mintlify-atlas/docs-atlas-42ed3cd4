@@ -1,0 +1,760 @@
+---
+title: Node Class
+description: API reference for the Tree-sitter Node class in JavaScript/Wasm
+---
+
+The `Node` class represents a single node within a syntax tree. Nodes are the primary way to inspect and traverse the structure of parsed source code.
+
+## Properties
+
+### Identity and Location
+
+#### `id`
+
+The numeric id for this node that is unique within its tree.
+
+```typescript
+readonly id: number
+```
+
+**Example:**
+
+```javascript
+const node = tree.rootNode;
+console.log(node.id); // e.g., 42
+```
+
+<Note>
+If a new tree is created based on an older tree (via incremental parsing), and a node from the old tree is reused, that node will have the same id in both trees.
+</Note>
+
+#### `tree`
+
+The tree that this node belongs to.
+
+```typescript
+readonly tree: Tree
+```
+
+#### `startIndex`
+
+The byte index where this node starts.
+
+```typescript
+readonly startIndex: number
+```
+
+#### `endIndex`
+
+The byte index where this node ends.
+
+```typescript
+readonly endIndex: number
+```
+
+#### `startPosition`
+
+The position where this node starts.
+
+```typescript
+readonly startPosition: Point
+```
+
+#### `endPosition`
+
+The position where this node ends.
+
+```typescript
+readonly endPosition: Point
+```
+
+**Example:**
+
+```javascript
+const tree = parser.parse('let x = 1;');
+const node = tree.rootNode.firstChild;
+
+console.log('Type:', node.type);
+console.log('Byte range:', node.startIndex, '-', node.endIndex);
+console.log('Position:', node.startPosition, '-', node.endPosition);
+// Type: lexical_declaration
+// Byte range: 0 - 10
+// Position: { row: 0, column: 0 } - { row: 0, column: 10 }
+```
+
+### Type Information
+
+#### `type`
+
+Get this node's type as a string.
+
+```typescript
+readonly type: string
+```
+
+#### `typeId`
+
+Get this node's type as a numerical id.
+
+```typescript
+readonly typeId: number
+```
+
+#### `grammarType`
+
+Get this node's grammar type as a string, ignoring aliases.
+
+```typescript
+readonly grammarType: string
+```
+
+#### `grammarId`
+
+Get this node's grammar type as a numerical id, ignoring aliases.
+
+```typescript
+readonly grammarId: number
+```
+
+**Example:**
+
+```javascript
+const tree = parser.parse('const x = 1;');
+const constNode = tree.rootNode.descendantForIndex(0);
+
+console.log(constNode.type);        // 'const' (aliased)
+console.log(constNode.grammarType); // May be different if aliased
+```
+
+### Node Classification
+
+#### `isNamed`
+
+Check if this node is *named*. Named nodes correspond to named rules in the grammar, whereas *anonymous* nodes correspond to string literals in the grammar.
+
+```typescript
+readonly isNamed: boolean
+```
+
+#### `isExtra`
+
+Check if this node is *extra*. Extra nodes represent things like comments, which are not required by the grammar but can appear anywhere.
+
+```typescript
+readonly isExtra: boolean
+```
+
+#### `isError`
+
+Check if this node represents a syntax error.
+
+```typescript
+readonly isError: boolean
+```
+
+#### `isMissing`
+
+Check if this node is *missing*. Missing nodes are inserted by the parser to recover from certain kinds of syntax errors.
+
+```typescript
+readonly isMissing: boolean
+```
+
+#### `hasError`
+
+Check if this node represents a syntax error or contains any syntax errors anywhere within it.
+
+```typescript
+readonly hasError: boolean
+```
+
+#### `hasChanges`
+
+Check if this node has been edited.
+
+```typescript
+readonly hasChanges: boolean
+```
+
+**Example:**
+
+```javascript
+const tree = parser.parse('let x = ;'); // Syntax error
+const declarator = tree.rootNode.firstChild.lastChild;
+
+console.log(declarator.hasError);   // true
+console.log(declarator.isMissing);  // true (missing value)
+```
+
+### Content
+
+#### `text`
+
+Get the string content of this node.
+
+```typescript
+readonly text: string
+```
+
+**Example:**
+
+```javascript
+const tree = parser.parse('let x = 1;');
+const identifier = tree.rootNode.descendantForIndex(4);
+
+console.log(identifier.type); // 'identifier'
+console.log(identifier.text); // 'x'
+```
+
+### Parse State
+
+#### `parseState`
+
+Get this node's parse state.
+
+```typescript
+readonly parseState: number
+```
+
+#### `nextParseState`
+
+Get the parse state after this node.
+
+```typescript
+readonly nextParseState: number
+```
+
+<Note>
+Parse states are advanced features used for error recovery and lookahead. Most applications don't need to use them.
+</Note>
+
+## Child Access
+
+### Counts
+
+#### `childCount`
+
+Get this node's number of children.
+
+```typescript
+readonly childCount: number
+```
+
+#### `namedChildCount`
+
+Get this node's number of *named* children.
+
+```typescript
+readonly namedChildCount: number
+```
+
+### Individual Children
+
+#### `child(index)`
+
+Get this node's child at the given index.
+
+```typescript
+child(index: number): Node | null
+```
+
+**Example:**
+
+```javascript
+const tree = parser.parse('a + b');
+const expr = tree.rootNode.firstChild.firstChild;
+
+console.log(expr.childCount); // 3
+console.log(expr.child(0).text); // 'a'
+console.log(expr.child(1).text); // '+'
+console.log(expr.child(2).text); // 'b'
+```
+
+<Note>
+This method is fairly fast, but its cost is technically log(n). If you're iterating over a long list of children, use the `children` property instead.
+</Note>
+
+#### `namedChild(index)`
+
+Get this node's *named* child at the given index.
+
+```typescript
+namedChild(index: number): Node | null
+```
+
+#### `firstChild`
+
+Get this node's first child.
+
+```typescript
+readonly firstChild: Node | null
+```
+
+#### `lastChild`
+
+Get this node's last child.
+
+```typescript
+readonly lastChild: Node | null
+```
+
+#### `firstNamedChild`
+
+Get this node's first named child.
+
+```typescript
+readonly firstNamedChild: Node | null
+```
+
+#### `lastNamedChild`
+
+Get this node's last named child.
+
+```typescript
+readonly lastNamedChild: Node | null
+```
+
+### All Children
+
+#### `children`
+
+Iterate over this node's children.
+
+```typescript
+readonly children: Node[]
+```
+
+**Example:**
+
+```javascript
+const tree = parser.parse('a + b * c');
+const expr = tree.rootNode.firstChild.firstChild;
+
+for (const child of expr.children) {
+  console.log(child.type, child.text);
+}
+// identifier 'a'
+// + '+'
+// binary_expression 'b * c'
+```
+
+#### `namedChildren`
+
+Iterate over this node's named children.
+
+```typescript
+readonly namedChildren: Node[]
+```
+
+<Note>
+If you're walking the tree recursively, consider using a `TreeCursor` instead for better performance.
+</Note>
+
+## Field Access
+
+Many nodes have *fields*, which are named children that play specific roles in the grammar.
+
+#### `childForFieldName(fieldName)`
+
+Get the first child with the given field name.
+
+```typescript
+childForFieldName(fieldName: string): Node | null
+```
+
+**Example:**
+
+```javascript
+const tree = parser.parse('function foo() {}');
+const func = tree.rootNode.firstChild;
+
+console.log(func.type); // 'function_declaration'
+
+const name = func.childForFieldName('name');
+console.log(name.text); // 'foo'
+
+const body = func.childForFieldName('body');
+console.log(body.type); // 'statement_block'
+```
+
+#### `childForFieldId(fieldId)`
+
+Get this node's child with the given numerical field id.
+
+```typescript
+childForFieldId(fieldId: number): Node | null
+```
+
+<Note>
+You can convert a field name to an id using `language.fieldIdForName()`.
+</Note>
+
+#### `childrenForFieldName(fieldName)`
+
+Get an array of this node's children with a given field name.
+
+```typescript
+childrenForFieldName(fieldName: string): Node[]
+```
+
+**Example:**
+
+```javascript
+// Some nodes can have multiple children with the same field name
+const tree = parser.parse('if (x) { a(); } else if (y) { b(); }');
+const ifStmt = tree.rootNode.firstChild;
+
+const alternatives = ifStmt.childrenForFieldName('alternative');
+console.log(alternatives.length); // May be > 1 for else-if chains
+```
+
+#### `childrenForFieldId(fieldId)`
+
+Get an array of this node's children with a given field id.
+
+```typescript
+childrenForFieldId(fieldId: number): Node[]
+```
+
+#### `fieldNameForChild(index)`
+
+Get the field name of this node's child at the given index.
+
+```typescript
+fieldNameForChild(index: number): string | null
+```
+
+#### `fieldNameForNamedChild(index)`
+
+Get the field name of this node's named child at the given index.
+
+```typescript
+fieldNameForNamedChild(index: number): string | null
+```
+
+## Positional Queries
+
+### Children at Index/Position
+
+#### `firstChildForIndex(index)`
+
+Get the node's first child that contains or starts after the given byte offset.
+
+```typescript
+firstChildForIndex(index: number): Node | null
+```
+
+#### `firstNamedChildForIndex(index)`
+
+Get the node's first named child that contains or starts after the given byte offset.
+
+```typescript
+firstNamedChildForIndex(index: number): Node | null
+```
+
+### Descendants
+
+#### `descendantForIndex(start, end?)`
+
+Get the smallest node within this node that spans the given byte range.
+
+```typescript
+descendantForIndex(start: number, end: number = start): Node | null
+```
+
+**Example:**
+
+```javascript
+const tree = parser.parse('let x = 1 + 2;');
+const root = tree.rootNode;
+
+const node = root.descendantForIndex(8, 13); // '1 + 2'
+console.log(node.type); // 'binary_expression'
+console.log(node.text); // '1 + 2'
+```
+
+#### `namedDescendantForIndex(start, end?)`
+
+Get the smallest named node within this node that spans the given byte range.
+
+```typescript
+namedDescendantForIndex(start: number, end: number = start): Node | null
+```
+
+#### `descendantForPosition(start, end?)`
+
+Get the smallest node within this node that spans the given point range.
+
+```typescript
+descendantForPosition(start: Point, end: Point = start): Node | null
+```
+
+**Example:**
+
+```javascript
+const tree = parser.parse('let x = 1;\nlet y = 2;');
+const root = tree.rootNode;
+
+const node = root.descendantForPosition(
+  { row: 1, column: 4 }, // 'y'
+  { row: 1, column: 5 }
+);
+console.log(node.type); // 'identifier'
+console.log(node.text); // 'y'
+```
+
+#### `namedDescendantForPosition(start, end?)`
+
+Get the smallest named node within this node that spans the given point range.
+
+```typescript
+namedDescendantForPosition(start: Point, end: Point = start): Node | null
+```
+
+#### `descendantsOfType(types, startPosition?, endPosition?)`
+
+Get all descendants of this node that are the given type(s).
+
+```typescript
+descendantsOfType(
+  types: string | string[],
+  startPosition?: Point,
+  endPosition?: Point
+): Node[]
+```
+
+**Example:**
+
+```javascript
+const tree = parser.parse('let x = 1; const y = 2; var z = 3;');
+const root = tree.rootNode;
+
+// Find all identifiers
+const identifiers = root.descendantsOfType('identifier');
+console.log(identifiers.map(n => n.text)); // ['x', 'y', 'z']
+
+// Find all declaration types
+const decls = root.descendantsOfType([
+  'lexical_declaration',
+  'variable_declaration'
+]);
+console.log(decls.length); // 3
+```
+
+#### `descendantCount`
+
+Get the node's number of descendants, including itself.
+
+```typescript
+readonly descendantCount: number
+```
+
+## Siblings
+
+#### `nextSibling`
+
+Get this node's next sibling.
+
+```typescript
+readonly nextSibling: Node | null
+```
+
+#### `previousSibling`
+
+Get this node's previous sibling.
+
+```typescript
+readonly previousSibling: Node | null
+```
+
+#### `nextNamedSibling`
+
+Get this node's next *named* sibling.
+
+```typescript
+readonly nextNamedSibling: Node | null
+```
+
+#### `previousNamedSibling`
+
+Get this node's previous *named* sibling.
+
+```typescript
+readonly previousNamedSibling: Node | null
+```
+
+**Example:**
+
+```javascript
+const tree = parser.parse('a + b');
+const expr = tree.rootNode.firstChild.firstChild;
+const plus = expr.child(1);
+
+console.log(plus.text); // '+'
+console.log(plus.previousSibling.text); // 'a'
+console.log(plus.nextSibling.text); // 'b'
+```
+
+## Parent and Ancestors
+
+#### `parent`
+
+Get this node's immediate parent.
+
+```typescript
+readonly parent: Node | null
+```
+
+<Note>
+Prefer using `childWithDescendant()` for iterating over ancestors, as it's more efficient.
+</Note>
+
+#### `childWithDescendant(descendant)`
+
+Get the node that contains `descendant`.
+
+```typescript
+childWithDescendant(descendant: Node): Node | null
+```
+
+**Returns:** The child of this node that contains `descendant`, or `descendant` itself if it's a direct child
+
+**Example:**
+
+```javascript
+const tree = parser.parse('function foo() { return 1 + 2; }');
+const root = tree.rootNode;
+const addExpr = root.descendantForIndex(28, 33); // '1 + 2'
+
+let node = addExpr;
+while (node.parent !== root) {
+  node = root.childWithDescendant(node);
+  console.log(node.type);
+}
+// Walks up: return_statement, statement_block, function_declaration
+```
+
+## Tree Cursor
+
+#### `walk()`
+
+Create a new `TreeCursor` starting from this node.
+
+```typescript
+walk(): TreeCursor
+```
+
+**Note:** The cursor is bounded by this node and cannot walk outside of it.
+
+**Example:**
+
+```javascript
+const tree = parser.parse('let x = 1;');
+const cursor = tree.rootNode.walk();
+
+console.log(cursor.nodeType); // 'program'
+
+if (cursor.gotoFirstChild()) {
+  console.log(cursor.nodeType); // 'lexical_declaration'
+}
+```
+
+## Utility Methods
+
+#### `equals(other)`
+
+Check if this node is equal to another node.
+
+```typescript
+equals(other: Node): boolean
+```
+
+**Example:**
+
+```javascript
+const tree1 = parser.parse('let x = 1;');
+const tree2 = parser.parse('let x = 1;');
+
+console.log(tree1.rootNode.equals(tree2.rootNode)); // false (different trees)
+
+const node = tree1.rootNode;
+const sameNode = tree1.rootNode;
+console.log(node.equals(sameNode)); // true
+```
+
+#### `toString()`
+
+Get the S-expression representation of this node.
+
+```typescript
+toString(): string
+```
+
+**Example:**
+
+```javascript
+const tree = parser.parse('let x = 1;');
+console.log(tree.rootNode.toString());
+// (program (lexical_declaration
+//   (variable_declarator name: (identifier) value: (number))))
+```
+
+#### `edit(edit)`
+
+Edit this node to keep it in sync with source code that has been edited.
+
+```typescript
+edit(edit: Edit): void
+```
+
+<Note>
+This function is rarely needed. When you edit a tree with `tree.edit()`, all nodes retrieved afterward will already reflect the edit. You only need `node.edit()` when you have a specific node instance you want to keep and continue using after an edit.
+</Note>
+
+## Common Patterns
+
+### Traversing All Nodes
+
+```javascript
+function traverse(node, callback) {
+  callback(node);
+  for (const child of node.children) {
+    traverse(child, callback);
+  }
+}
+
+traverse(tree.rootNode, (node) => {
+  console.log(node.type, node.text);
+});
+```
+
+### Finding Nodes by Type
+
+```javascript
+const functions = tree.rootNode
+  .descendantsOfType('function_declaration');
+
+for (const func of functions) {
+  const name = func.childForFieldName('name');
+  console.log('Function:', name.text);
+}
+```
+
+### Checking for Errors
+
+```javascript
+function hasErrors(node) {
+  if (node.isError || node.isMissing) return true;
+  return node.children.some(hasErrors);
+}
+
+if (hasErrors(tree.rootNode)) {
+  console.log('Syntax errors found');
+}
+```
+
+## See Also
+
+- [Tree class](/api/javascript/tree) - Working with syntax trees
+- [Parser class](/api/javascript/parser) - Creating parsers
+- [Query API](/api/javascript/query) - Pattern matching on nodes

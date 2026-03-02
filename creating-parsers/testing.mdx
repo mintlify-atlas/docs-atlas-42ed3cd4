@@ -1,0 +1,633 @@
+---
+title: Testing Parsers
+description: Write comprehensive tests for your Tree-sitter parser
+---
+
+# Testing Parsers
+
+For each rule you add to your grammar, you should create tests that describe how syntax trees should look when parsing that rule. These tests serve as documentation and verify that your parser works correctly.
+
+## Test Format
+
+Tests are written in specially-formatted text files in the `test/corpus/` directory.
+
+### Basic Structure
+
+Create test files like `test/corpus/statements.txt`:
+
+```text test/corpus/statements.txt
+==================
+Return statements
+==================
+
+func x() int {
+  return 1;
+}
+
+---
+
+(source_file
+  (function_definition
+    (identifier)
+    (parameter_list)
+    (primitive_type)
+    (block
+      (return_statement (number)))))
+```
+
+<Steps>
+  <Step title="Test name">
+    Written between two lines of `=` (equal signs)
+  </Step>
+  
+  <Step title="Input source code">
+    The code to parse
+  </Step>
+  
+  <Step title="Separator">
+    A line of three or more `-` (dashes)
+  </Step>
+  
+  <Step title="Expected output">
+    The expected syntax tree as an S-expression
+  </Step>
+</Steps>
+
+<Note>
+The S-expression only shows named nodes. Anonymous nodes (strings and regexes from the grammar) are not shown.
+</Note>
+
+### With Field Names
+
+Include field names for better documentation:
+
+```text
+==================
+Return statements
+==================
+
+func x() int {
+  return 1;
+}
+
+---
+
+(source_file
+  (function_definition
+    name: (identifier)
+    parameters: (parameter_list)
+    result: (primitive_type)
+    body: (block
+      (return_statement (number)))))
+```
+
+<Tip>
+Field names make tests more readable and document the structure of your syntax tree.
+</Tip>
+
+## Running Tests
+
+### Run All Tests
+
+```bash
+tree-sitter test
+```
+
+This runs all tests in your `test/corpus/` folder.
+
+### Run Specific Tests
+
+Use the `-i` flag to filter by name:
+
+```bash
+tree-sitter test -i 'Return statements'
+```
+
+### Update Tests
+
+After modifying the grammar, update all expected outputs:
+
+```bash
+tree-sitter test -u
+```
+
+<Warning>
+Review the changes carefully before committing. The `-u` flag overwrites all expected outputs with current parser output.
+</Warning>
+
+### Debug Tests
+
+Show detailed parsing information:
+
+```bash
+tree-sitter test -d
+tree-sitter test --debug
+```
+
+## Test Attributes
+
+Annotate tests with attributes below the test name:
+
+### `:skip`
+
+Temporarily disable a test:
+
+```text
+==================
+Future feature
+:skip
+==================
+
+future_syntax;
+
+---
+```
+
+### `:error`
+
+Assert that parsing produces an error:
+
+```text
+==================
+Invalid syntax
+:error
+==================
+
+int main ( {}
+
+---
+```
+
+<Note>
+With `:error`, you can omit the expected output section. The test passes if the parse tree contains an ERROR node.
+</Note>
+
+### `:fail-fast`
+
+Stop testing if this test fails:
+
+```text
+==================
+Critical test
+:fail-fast
+==================
+
+int main() {}
+
+---
+
+(source_file ...)
+```
+
+### `:platform(PLATFORM)`
+
+Run only on specific platforms:
+
+```text
+==================
+Windows-specific behavior
+:platform(windows)
+==================
+
+C:\\path\\to\\file
+
+---
+
+(source_file ...)
+```
+
+<CodeGroup>
+```text Linux
+:platform(linux)
+```
+
+```text macOS
+:platform(macos)
+```
+
+```text Windows
+:platform(windows)
+```
+</CodeGroup>
+
+**Multiple platforms**:
+
+```text
+==================
+Unix-like systems
+:platform(linux)
+:platform(macos)
+==================
+```
+
+### `:language(LANG)`
+
+Use a different parser from a multi-parser repository:
+
+```text
+==================
+TypeScript test
+:language(typescript)
+==================
+
+console.log('Hello');
+
+---
+
+(program ...)
+```
+
+```text
+==================
+TSX test
+:language(tsx)
+==================
+
+const x = <div />;
+
+---
+
+(program ...)
+```
+
+<Note>
+The default parser is the first entry in the `grammars` field in `tree-sitter.json`.
+</Note>
+
+### `:cst`
+
+Show the complete concrete syntax tree:
+
+```text
+==================
+Full CST output
+:cst
+==================
+
+int main() {}
+
+---
+
+(source_file
+  (function_definition
+    type: (primitive_type)
+    name: (identifier)
+    parameters: (parameter_list
+      "("
+      ")")
+    body: (compound_statement
+      "{"
+      "}")))  
+```
+
+<Tip>
+CST output includes anonymous nodes (punctuation, keywords) which are normally hidden.
+</Tip>
+
+## Custom Separators
+
+If your language uses `===` or `---`, add a suffix:
+
+```text
+==================|||
+Basic module
+==================|||
+
+---- MODULE Test ----
+increment(n) == n + 1
+====
+
+---|||
+
+(source_file
+  (module (identifier)
+    (operator (identifier)
+      (parameter_list (identifier))
+      (plus (identifier_ref) (number)))))
+```
+
+The suffix `|||` can be any identical string on all separator lines.
+
+## Organizing Tests
+
+### By Feature
+
+Organize test files by language feature:
+
+```
+test/corpus/
+  expressions.txt
+  statements.txt
+  declarations.txt
+  types.txt
+  comments.txt
+```
+
+### Comprehensive Coverage
+
+<Tip>
+Be comprehensive. Test all permutations of each language construct to increase coverage and help readers understand edge cases.
+</Tip>
+
+For a `for` loop, test:
+
+```text
+==================
+Basic for loop
+==================
+
+for i := 0; i < 10; i++ {
+  print(i);
+}
+
+---
+
+(source_file (for_statement ...))
+
+==================
+For loop without initialization
+==================
+
+for ; i < 10; i++ {
+  print(i);
+}
+
+---
+
+(source_file (for_statement ...))
+
+==================
+For loop without increment
+==================
+
+for i := 0; i < 10; {
+  print(i);
+}
+
+---
+
+(source_file (for_statement ...))
+
+==================
+Infinite for loop
+==================
+
+for {
+  print("forever");
+}
+
+---
+
+(source_file (for_statement ...))
+```
+
+## Example Test File
+
+Here's a complete example:
+
+```text test/corpus/expressions.txt
+==================
+Binary expressions
+==================
+
+a + b
+a + b * c
+(a + b) * c
+
+---
+
+(source_file
+  (expression_statement
+    (binary_expression
+      left: (identifier)
+      operator: (operator)
+      right: (identifier)))
+  (expression_statement
+    (binary_expression
+      left: (identifier)
+      operator: (operator)
+      right: (binary_expression
+        left: (identifier)
+        operator: (operator)
+        right: (identifier))))
+  (expression_statement
+    (binary_expression
+      left: (parenthesized_expression
+        (binary_expression
+          left: (identifier)
+          operator: (operator)
+          right: (identifier)))
+      operator: (operator)
+      right: (identifier))))
+
+==================
+Unary expressions
+==================
+
+-x
+!flag
+~bits
+
+---
+
+(source_file
+  (expression_statement
+    (unary_expression
+      operator: (operator)
+      operand: (identifier)))
+  (expression_statement
+    (unary_expression
+      operator: (operator)
+      operand: (identifier)))
+  (expression_statement
+    (unary_expression
+      operator: (operator)
+      operand: (identifier))))
+
+==================
+Function calls
+==================
+
+foo()
+bar(a, b, c)
+nested(foo(), bar())
+
+---
+
+(source_file
+  (expression_statement
+    (call_expression
+      function: (identifier)
+      arguments: (argument_list)))
+  (expression_statement
+    (call_expression
+      function: (identifier)
+      arguments: (argument_list
+        (identifier)
+        (identifier)
+        (identifier))))
+  (expression_statement
+    (call_expression
+      function: (identifier)
+      arguments: (argument_list
+        (call_expression
+          function: (identifier)
+          arguments: (argument_list))
+        (call_expression
+          function: (identifier)
+          arguments: (argument_list))))))
+
+==================
+Invalid expression
+:error
+==================
+
+a + + b
+
+---
+```
+
+## Test-Driven Development
+
+<Steps>
+  <Step title="Write the test first">
+    Before implementing a grammar rule, write a test showing the expected behavior.
+  </Step>
+  
+  <Step title="Run the test">
+    The test will fail because the grammar doesn't support the feature yet.
+  </Step>
+  
+  <Step title="Implement the rule">
+    Add or modify grammar rules to make the test pass.
+  </Step>
+  
+  <Step title="Generate and test">
+    Run `tree-sitter generate && tree-sitter test` to verify.
+  </Step>
+  
+  <Step title="Refine">
+    Adjust the grammar or test as needed until it works correctly.
+  </Step>
+</Steps>
+
+## Automatic Compilation
+
+The first time you run `tree-sitter test` after generating your parser, it takes extra time to compile your C code into a dynamically-loadable library.
+
+Tree-sitter automatically recompiles when:
+
+- You run `tree-sitter generate`
+- You modify `src/scanner.c` (external scanner)
+
+<Note>
+Compiled parsers are cached, so subsequent test runs are much faster.
+</Note>
+
+## Best Practices
+
+### 1. Test Early and Often
+
+<Tip>
+Add tests as you develop each rule. Don't wait until the grammar is complete.
+</Tip>
+
+### 2. Test Edge Cases
+
+Include tests for:
+
+- Empty structures
+- Nested constructs
+- Ambiguous syntax
+- Error cases
+- Platform-specific behavior
+
+### 3. Use Descriptive Names
+
+```text
+Good:
+==================
+If statement with else clause
+==================
+
+Bad:
+==================
+Test 1
+==================
+```
+
+### 4. Group Related Tests
+
+Keep similar tests in the same file:
+
+```
+test/corpus/
+  conditionals.txt    # if, else, switch
+  loops.txt          # for, while, do-while
+  functions.txt      # function declarations and calls
+```
+
+### 5. Document Expected Behavior
+
+Use tests to document how your parser handles specific cases:
+
+```text
+==================
+Operator precedence: multiplication before addition
+==================
+
+a + b * c  // Should parse as: a + (b * c)
+
+---
+
+(source_file
+  (expression_statement
+    (binary_expression
+      left: (identifier)
+      right: (binary_expression  # * binds tighter
+        left: (identifier)
+        right: (identifier)))))
+```
+
+## Debugging Failed Tests
+
+### View Parse Tree
+
+When a test fails, examine the actual parse tree:
+
+```bash
+echo 'your code here' | tree-sitter parse
+```
+
+### Compare Output
+
+The test output shows:
+
+```
+Expected:
+  (source_file (function_definition ...))
+
+Actual:
+  (source_file (ERROR (identifier) ...))
+```
+
+### Use Debug Mode
+
+```bash
+tree-sitter test -d -i 'your test name'
+```
+
+Shows:
+
+- Lexing output
+- Parse states
+- Conflict resolution
+- Error recovery
+
+## Next Steps
+
+Now that you know how to test your parser:
+
+- Learn about [Publishing](/creating-parsers/publishing) your parser
+- Explore [existing parsers](https://github.com/tree-sitter) for test examples
+- Read about [CI/CD workflows](https://github.com/tree-sitter/workflows) for automated testing

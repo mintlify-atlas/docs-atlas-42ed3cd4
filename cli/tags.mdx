@@ -1,0 +1,135 @@
+---
+title: tags
+description: Generate a list of tags for symbol navigation
+---
+
+The `tags` command runs symbol tagging on an arbitrary file and outputs a list of tags. This is useful for code navigation features.
+
+```bash
+tree-sitter tags [OPTIONS] [PATHS]...
+```
+
+For more information, see [Code Navigation - Tagging and Captures](https://tree-sitter.github.io/tree-sitter/code-navigation#tagging-and-captures).
+
+## Input Sources
+
+### File Paths
+
+Pass file paths directly:
+
+```bash
+tree-sitter tags example.js
+```
+
+### Paths File
+
+Use `--paths` to provide a file containing paths:
+
+```bash
+tree-sitter tags --paths file-list.txt
+```
+
+### Standard Input
+
+If no paths are provided, input is read from stdin:
+
+```bash
+echo "function hello() {}" | tree-sitter tags --scope source.js
+```
+
+## Output Format
+
+The command outputs tags in a format suitable for code navigation tools. Each tag includes:
+
+- Symbol name
+- Symbol kind (e.g., function, class, variable)
+- Location (file, line, column)
+- Scope information
+
+## Options
+
+### Input Options
+
+<ParamField path="--paths" type="file">
+  The path to a file that contains paths to source files to tag.
+</ParamField>
+
+<ParamField path="-p, --grammar-path" type="path">
+  The path to the directory containing the grammar. Implies `--rebuild`.
+</ParamField>
+
+<ParamField path="--scope" type="scope">
+  The language scope to use for symbol tagging. Useful when the language is ambiguous.
+</ParamField>
+
+<ParamField path="-n, --test-number" type="number">
+  Generate tags from the contents of a specific test.
+</ParamField>
+
+### Output Options
+
+<ParamField path="-q, --quiet" type="flag">
+  Suppress main output.
+</ParamField>
+
+<ParamField path="-t, --time" type="flag">
+  Print the time taken to generate tags for the file.
+</ParamField>
+
+### Build Options
+
+<ParamField path="-r, --rebuild" type="flag">
+  Force a rebuild of the parser before running tags.
+</ParamField>
+
+<ParamField path="--config-path" type="path">
+  The path to an alternative configuration (`config.json`) file. See [init-config](/cli/init-config).
+</ParamField>
+
+## Examples
+
+### Generate Tags for a File
+
+```bash
+tree-sitter tags example.js
+```
+
+### Generate Tags for Multiple Files
+
+```bash
+tree-sitter tags src/**/*.js
+```
+
+### Generate Tags with Performance Measurement
+
+```bash
+tree-sitter tags --time example.js
+```
+
+### Generate Tags from File List
+
+```bash
+tree-sitter tags --paths file-list.txt
+```
+
+### Generate Tags with Specific Scope
+
+```bash
+tree-sitter tags --scope source.typescript example.ts
+```
+
+## Tag Queries
+
+Tags are generated using the `queries/tags.scm` query file in your grammar repository. This file defines patterns for extracting symbols.
+
+Example tag query:
+
+```scheme
+(function_declaration
+  name: (identifier) @name) @definition.function
+
+(class_declaration
+  name: (type_identifier) @name) @definition.class
+```
+
+For more information on writing tag queries, see the [Code Navigation documentation](https://tree-sitter.github.io/tree-sitter/code-navigation).
